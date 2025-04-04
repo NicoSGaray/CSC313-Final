@@ -5,7 +5,6 @@ import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFW;
@@ -26,6 +25,7 @@ public class Main {
     // NOAH: Added list of cars and active index
     private List<Car> cars;
     private int currCar = 0;
+    private Car enemyCar; // NOAH: added enemy car instantiator
     private boolean tabPressed = false;
     // NOAH: END
 
@@ -86,6 +86,10 @@ public class Main {
         }
         // NOAH: END
 
+        // NOAH: Added enemy car creator and positioner
+        enemyCar = new Car();
+        enemyCar.setPosition(20, 10, 20);
+
         terrain = new Terrain("terrain.obj"); // Load the terrain from an OBJ file
     }
 
@@ -112,6 +116,11 @@ public class Main {
                 car.render(terrain, i); // titus added carNumber pass
             }
             // NOAH: END
+
+            // NOAH: added rendering, updating, and movement for enemy car
+            enemyCar.update();
+            enemyCar.render(terrain, -1);
+            moveEnemyCar();
 
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
@@ -313,6 +322,79 @@ public class Main {
         // NOAH END:
     }
 
+    // NOAH: Added updateEnemyCar
+    private void moveEnemyCar() {
+
+        // Silly implementation to rotate the enemy car randomly, this can be removed
+        if (Math.random() < 0.5) {
+            enemyCar.turnLeft();
+        } else {
+            enemyCar.turnRight();
+        }
+
+        // Find the closest player car to the enemy car
+        Car closestCar = null;
+        float closestDistance = Float.MAX_VALUE;
+
+        // Iterate over all cars and get the closest one
+        for (Car car : cars) {
+            float dx = car.getX() - enemyCar.getX();
+            float dz = car.getZ() - enemyCar.getZ();
+            float distance = (float) Math.sqrt(dx * dx + dz * dz);
+
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestCar = car;
+            }
+        }
+
+        // Call to distance threshhold function
+        // This is added as a way to call another function when the distance is reached
+        float distanceThresh = 10.0f;
+        if (closestDistance < distanceThresh) { // Do something within a certian distance
+            onWithinDistanceThreshhold(enemyCar, closestCar);
+        }
+
+        if (closestCar != null) {
+            // Calculate the direction vector from the enemy car to the closest player
+            // car
+            float dx = closestCar.getX() - enemyCar.getX();
+            float dz = closestCar.getZ() - enemyCar.getZ();
+
+            // Normalize the direction vector
+            float length = (float) Math.sqrt(dx * dx + dz * dz);
+            if (length > 0) {
+                dx /= length;
+                dz /= length;
+            }
+
+            // Move the enemy car towards the closest player car
+            float speed = 0.05f; // Adjust the speed of the enemy car
+            float newX = enemyCar.getX() + dx * speed;
+            float newZ = enemyCar.getZ() + dz * speed;
+
+            // Very simple implementation to move the enemy, simply by changing the distance
+            enemyCar.setPosition(newX, enemyCar.getY(), newZ);
+        }
+    }
+    // NOAH: updateEnemyCar END
+
+    // NOAH: added onWithinDistanceThreshhold
+    // Function added for the purpose of execution additional actions if/when needed
+    public int counter = 0;
+
+    public void onWithinDistanceThreshhold(Car enemyCar, Car closestCar) {
+        counter++; // Simple counter and count function just to show the functionality
+        if (counter % 500 == 0) {
+            System.out.println("Enemy car is within distance threshold of player car!");
+            System.out.println(
+                    "Enemy car position: " + enemyCar.getX() + ", " + enemyCar.getY() + ", " + enemyCar.getZ());
+            System.out.println("Closest player car position: " + closestCar.getX() + ", " + closestCar.getY() + ", "
+                    + closestCar.getZ());
+        }
+    }
+    // NOAH: onWithinDistanceThreshhold END
+
     public static class Car {
         private float x = 0, y = 0, z = 0; // Car's position
         private float speed = 0; // Current speed
@@ -420,12 +502,16 @@ public class Main {
         }
 
         private void renderCarBody(int carNumber) { // titus added carNumber
-            if (carNumber % 3 == 0) { // titus added different colors for the cars
-                GL11.glColor3f(1.0f, 0.0f, 0.0f); // Red for car 1
-            } else if (carNumber % 3 == 1) {
-                GL11.glColor3f(1.0f, 1.0f, 1.0f); // White for car 2
+            if (carNumber == -1) {
+                GL11.glColor3f(0.75f, 0.0f, 0.75f);
             } else {
-                GL11.glColor3f(0.0f, 0.0f, 1.0f); // Blue for car 3
+                if (carNumber % 3 == 0) { // titus added different colors for the cars
+                    GL11.glColor3f(1.0f, 0.0f, 0.0f); // Red for car 1
+                } else if (carNumber % 3 == 1) {
+                    GL11.glColor3f(1.0f, 1.0f, 1.0f); // White for car 2
+                } else {
+                    GL11.glColor3f(0.0f, 0.0f, 1.0f); // Blue for car 3
+                }
             }
             GL11.glShadeModel(GL11.GL_SMOOTH); // Smooth shading for Phong
 
