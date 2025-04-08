@@ -7,7 +7,6 @@ import java.util.List;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.GLFW;
-import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 
@@ -29,17 +28,23 @@ public class Main {
     private boolean tabPressed = false;
     // NOAH: END
 
-    // Noah: 269-277 (until render)
-    // Titus: 277-287 (render and onward)
+    private boolean carOffTerrain = true; // titus added to check if the car is off the terrain
+
     public static void main(String[] args) {
         new Main().run();
     }
 
     public void run() {
-        init();
-        loop();
-        GLFW.glfwDestroyWindow(window);
-        GLFW.glfwTerminate();
+        // init();
+        while(carOffTerrain) { // titus added to restart the window ever time the car drives off the terrain
+            carOffTerrain = false; // Reset carOffTerrain for each frame
+            init();
+            loop();
+            GLFW.glfwDestroyWindow(window);
+            GLFW.glfwTerminate();
+        }
+        // GLFW.glfwDestroyWindow(window);
+        // GLFW.glfwTerminate();
     }
 
     private void init() {
@@ -94,7 +99,7 @@ public class Main {
     }
 
     private void loop() {
-        while (!GLFW.glfwWindowShouldClose(window)) {
+        while (!GLFW.glfwWindowShouldClose(window) && !carOffTerrain) { // titus added carOffTerrain check
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
             GL11.glLoadIdentity();
@@ -122,9 +127,23 @@ public class Main {
             enemyCar.render(terrain, -1);
             moveEnemyCar();
 
+            carOffTerrain = isCarOffTerrain(activeCar); // titus
+
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
         }
+    }
+
+    public boolean isCarOffTerrain(Car car) {
+        float terrainMinX = -50.0f; // Replace with your terrain's actual minimum X
+        float terrainMaxX = 50.0f;  // Replace with your terrain's actual maximum X
+        float terrainMinZ = -50.0f; // Replace with your terrain's actual minimum Z
+        float terrainMaxZ = 50.0f;  // Replace with your terrain's actual maximum Z
+
+        float carX = car.getX();
+        float carZ = car.getZ();
+        System.out.println("Position: (" + car.getX() + ", " + car.getZ() + ")");
+        return carX < terrainMinX || carX > terrainMaxX || carZ < terrainMinZ || carZ > terrainMaxZ;
     }
 
     public void initLighting() {
@@ -458,10 +477,10 @@ public class Main {
 
         public void render(Terrain terrain, int carNumber) { // titus added carnumber
             // Get the heights of each wheel
-            float frontLeftWheelY = terrain.getTerrainHeightAt(x - 0.9f, z + 1.5f);
-            float frontRightWheelY = terrain.getTerrainHeightAt(x + 0.9f, z + 1.5f);
-            float rearLeftWheelY = terrain.getTerrainHeightAt(x - 0.9f, z - 1.5f);
-            float rearRightWheelY = terrain.getTerrainHeightAt(x + 0.9f, z - 1.5f);
+            float frontLeftWheelY = terrain.getTerrainHeightAt(x - 0.2f, z + 0.5f);
+            float frontRightWheelY = terrain.getTerrainHeightAt(x + 0.2f, z + 0.5f);
+            float rearLeftWheelY = terrain.getTerrainHeightAt(x - 0.2f, z - 0.5f);
+            float rearRightWheelY = terrain.getTerrainHeightAt(x + 0.2f, z - 0.5f);
 
             // Calculate the average height of the car body (based on wheel heights)
             float averageHeight = (frontLeftWheelY + frontRightWheelY + rearLeftWheelY + rearRightWheelY) / 4.0f;
@@ -495,8 +514,8 @@ public class Main {
             // Render the car body
             renderCarBody(carNumber); // Call thee updated renderCarBody method // Titus added carNumber
 
-            // Render the wheels
-            renderWheels(terrain); // Render the wheels based on terrain
+            // // Render the wheels
+            // renderWheels(terrain); // Render the wheels based on terrain
 
             GL11.glPopMatrix();
         }
@@ -520,9 +539,9 @@ public class Main {
             GL11.glMaterialfv(GL11.GL_FRONT, GL11.GL_SPECULAR, carBodySpecular);
             GL11.glMaterialf(GL11.GL_FRONT, GL11.GL_SHININESS, 64.0f); // High shininess for car body
 
-            float length = 4.0f;
-            float width = 2.0f;
-            float height = 0.5f;
+            float length = 1.0f; // titus changed shape
+            float width = 1.0f; // titus changed shape
+            float height = 4.0f; // titus changed shape
 
             GL11.glBegin(GL11.GL_QUADS);
 
@@ -621,33 +640,33 @@ public class Main {
             GL11.glColor3f(0.0f, 0.0f, 0.0f); // Black color for wheels
 
             // Define the wheel height offset
-            float wheelHeightOffset = 0.8f; // Lower the wheels by this amount relative to the car body
+            float wheelHeightOffset = 2.2f; // Lower the wheels by this amount relative to the car body
 
             // Front-left wheel
             GL11.glPushMatrix();
-            float frontLeftWheelY = terrain.getTerrainHeightAt(this.getX() - 0.9f, this.getZ() + 1.5f);
-            GL11.glTranslatef(-0.9f, frontLeftWheelY + 0.5f - wheelHeightOffset, 1.5f); // Lower the wheel by the offset
+            float frontLeftWheelY = terrain.getTerrainHeightAt(this.getX() - 0.2f, this.getZ() + 0.5f);
+            GL11.glTranslatef(-0.6f, frontLeftWheelY + 0.2f - wheelHeightOffset, 0.5f); // Lower the wheel by the offset
             renderWheel();
             GL11.glPopMatrix();
 
             // Front-right wheel
             GL11.glPushMatrix();
-            float frontRightWheelY = terrain.getTerrainHeightAt(this.getX() + 0.9f, this.getZ() + 1.5f);
-            GL11.glTranslatef(0.9f, frontRightWheelY + 0.5f - wheelHeightOffset, 1.5f); // Lower the wheel by the offset
+            float frontRightWheelY = terrain.getTerrainHeightAt(this.getX() + 0.2f, this.getZ() + 0.5f);
+            GL11.glTranslatef(0.6f, frontRightWheelY + 0.2f - wheelHeightOffset, 0.5f); // Lower the wheel by the offset
             renderWheel();
             GL11.glPopMatrix();
 
             // Reat-left wheel
             GL11.glPushMatrix();
-            float rearLeftWheelY = terrain.getTerrainHeightAt(this.getX() - 0.9f, this.getZ() - 1.5f);
-            GL11.glTranslatef(-0.9f, rearLeftWheelY + 0.5f - wheelHeightOffset, -1.5f); // Lower the wheel by the offset
+            float rearLeftWheelY = terrain.getTerrainHeightAt(this.getX() - 0.2f, this.getZ() - 0.5f);
+            GL11.glTranslatef(-0.6f, rearLeftWheelY + 0.2f - wheelHeightOffset, -0.5f); // Lower the wheel by the offset
             renderWheel();
             GL11.glPopMatrix();
 
             // Rear-right wheel
             GL11.glPushMatrix();
-            float rearRightWheelY = terrain.getTerrainHeightAt(this.getX() + 0.9f, this.getZ() - 1.5f);
-            GL11.glTranslatef(0.9f, rearRightWheelY + 0.5f - wheelHeightOffset, -1.5f); // Lower the wheel by the offset
+            float rearRightWheelY = terrain.getTerrainHeightAt(this.getX() + 0.2f, this.getZ() - 0.5f);
+            GL11.glTranslatef(0.6f, rearRightWheelY + 0.2f - wheelHeightOffset, -0.5f); // Lower the wheel by the offset
             renderWheel();
             GL11.glPopMatrix();
         }
