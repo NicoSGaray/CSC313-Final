@@ -7,3 +7,5 @@ run.bash
 .DS_Store
 .class
 *.class
+fractal_terrain.obj
+terrain.obj

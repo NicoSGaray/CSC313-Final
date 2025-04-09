@@ -17,16 +17,12 @@ public class Main {
     private int height = 600;
     private Terrain terrain;
 
-    // NOAH: Added carCount variable
     public int carCount = 3;
-    // NOAH: END
 
-    // NOAH: Added list of cars and active index
     private List<Car> cars;
     private int currCar = 0;
-    private Car enemyCar; // NOAH: added enemy car instantiator
+    private Car enemyCar;
     private boolean tabPressed = false;
-    // NOAH: END
 
     private boolean carOffTerrain = true; // titus added to check if the car is off the terrain
 
@@ -35,16 +31,11 @@ public class Main {
     }
 
     public void run() {
-        // init();
-        while(carOffTerrain) { // titus added to restart the window ever time the car drives off the terrain
-            carOffTerrain = false; // Reset carOffTerrain for each frame
-            init();
-            loop();
-            GLFW.glfwDestroyWindow(window);
-            GLFW.glfwTerminate();
-        }
-        // GLFW.glfwDestroyWindow(window);
-        // GLFW.glfwTerminate();
+        // NOAH: rolled back looping in main
+        init();
+        loop();
+        GLFW.glfwDestroyWindow(window);
+        GLFW.glfwTerminate();
     }
 
     private void init() {
@@ -80,7 +71,6 @@ public class Main {
         // Clear the screen and depth buffer
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
-        // NOAH: Initialize list of cars and populate with cars
         cars = new ArrayList<>();
         for (int i = 0; i < carCount; i++) {
             // Create a new car object and set its initial position randomly within a range
@@ -89,17 +79,15 @@ public class Main {
             car.setPosition((float) (Math.random() * 30), 0.0f, (float) (Math.random() * 30));
             cars.add(car);
         }
-        // NOAH: END
 
-        // NOAH: Added enemy car creator and positioner
         enemyCar = new Car();
-        enemyCar.setPosition(20, 10, 20);
+        enemyCar.setPosition(20, 0, 20);
 
-        terrain = new Terrain("terrain.obj"); // Load the terrain from an OBJ file
+        terrain = new Terrain("fractal_terrain.obj"); // Load the terrain from an OBJ file
     }
 
     private void loop() {
-        while (!GLFW.glfwWindowShouldClose(window) && !carOffTerrain) { // titus added carOffTerrain check
+        while (!GLFW.glfwWindowShouldClose(window)) { // NOAH: rolledback to not cut program when off edge
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
             GL11.glLoadIdentity();
@@ -107,43 +95,60 @@ public class Main {
             // Updae car movement based on user input
             updateCarMovement();
 
-            // NOAH START: Update the camera to target the current active car
             Car activeCar = cars.get(currCar);
             updateCamera(activeCar);
-            // NOAH: END
 
             // Render terrain
             terrain.render();
-            // NOAH START: Iterate over cars and update them individually
             for (int i = 0; i < cars.size(); i++) { // titus modified so we can see what car we are on
                 Car car = cars.get(i); // titus added
                 car.update();
                 car.render(terrain, i); // titus added carNumber pass
+                tryFall(car);
             }
-            // NOAH: END
 
-            // NOAH: added rendering, updating, and movement for enemy car
             enemyCar.update();
             enemyCar.render(terrain, -1);
             moveEnemyCar();
-
-            carOffTerrain = isCarOffTerrain(activeCar); // titus
+            tryFall(enemyCar);
 
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
         }
     }
 
-    public boolean isCarOffTerrain(Car car) {
-        float terrainMinX = -50.0f; // Replace with your terrain's actual minimum X
-        float terrainMaxX = 50.0f;  // Replace with your terrain's actual maximum X
-        float terrainMinZ = -50.0f; // Replace with your terrain's actual minimum Z
-        float terrainMaxZ = 50.0f;  // Replace with your terrain's actual maximum Z
+    public void tryFall(Car car) { // NOAH: Added tryFall Function
+        // NOAH: TODO: add locking of movement when off terrain
+        // NOAH: TODO: add simple notification of falling/death?
+        // Determine terrain boundaries
+        float terrainMinX = Float.MAX_VALUE;
+        float terrainMaxX = Float.MIN_VALUE;
+        float terrainMinZ = Float.MAX_VALUE;
+        float terrainMaxZ = Float.MIN_VALUE;
 
+        float[] vertices = terrain.model.getVertices();
+        for (int i = 0; i < vertices.length; i += 3) {
+            float x = vertices[i];
+            float z = vertices[i + 2];
+            if (x < terrainMinX)
+                terrainMinX = x;
+            if (x > terrainMaxX)
+                terrainMaxX = x;
+            if (z < terrainMinZ)
+                terrainMinZ = z;
+            if (z > terrainMaxZ)
+                terrainMaxZ = z;
+        }
+
+        // Check if the car is off the terrain
         float carX = car.getX();
         float carZ = car.getZ();
-        System.out.println("Position: (" + car.getX() + ", " + car.getZ() + ")");
-        return carX < terrainMinX || carX > terrainMaxX || carZ < terrainMinZ || carZ > terrainMaxZ;
+
+        // Apply falling logic if off the terrain
+        float fallSpeed = 0.1f;
+        if (carX < terrainMinX || carX > terrainMaxX || carZ < terrainMinZ || carZ > terrainMaxZ) {
+            car.setPosition(car.getX(), car.getY() - fallSpeed, car.getZ());
+        }
     }
 
     public void initLighting() {
@@ -313,7 +318,6 @@ public class Main {
 
     private void updateCarMovement() {
 
-        // NOAH START: handle swapping cars and debouncing tab
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_TAB) == GLFW.GLFW_PRESS) {
             if (!tabPressed) {
                 currCar = (currCar + 1) % cars.size();
@@ -322,9 +326,7 @@ public class Main {
         } else {
             tabPressed = false;
         }
-        // NOAH END
 
-        // NOAH START: Handle movement only for the currently active car
         Car activeCar = cars.get(currCar);
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_UP) == GLFW.GLFW_PRESS) {
             activeCar.accelerate();
@@ -338,10 +340,8 @@ public class Main {
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT) == GLFW.GLFW_PRESS) {
             activeCar.turnRight();
         }
-        // NOAH END:
     }
 
-    // NOAH: Added updateEnemyCar
     private void moveEnemyCar() {
 
         // Silly implementation to rotate the enemy car randomly, this can be removed
@@ -396,7 +396,6 @@ public class Main {
             enemyCar.setPosition(newX, enemyCar.getY(), newZ);
         }
     }
-    // NOAH: updateEnemyCar END
 
     // NOAH: added onWithinDistanceThreshhold
     // Function added for the purpose of execution additional actions if/when needed
@@ -477,10 +476,11 @@ public class Main {
 
         public void render(Terrain terrain, int carNumber) { // titus added carnumber
             // Get the heights of each wheel
-            float frontLeftWheelY = terrain.getTerrainHeightAt(x - 0.2f, z + 0.5f);
-            float frontRightWheelY = terrain.getTerrainHeightAt(x + 0.2f, z + 0.5f);
-            float rearLeftWheelY = terrain.getTerrainHeightAt(x - 0.2f, z - 0.5f);
-            float rearRightWheelY = terrain.getTerrainHeightAt(x + 0.2f, z - 0.5f);
+            float frontLeftWheelY = terrain.getTerrainHeightAt(x - 0.2f, z + 0.5f) + y; // NOAH: added support for
+                                                                                        // rendering body when falling
+            float frontRightWheelY = terrain.getTerrainHeightAt(x + 0.2f, z + 0.5f) + y;
+            float rearLeftWheelY = terrain.getTerrainHeightAt(x - 0.2f, z - 0.5f) + y;
+            float rearRightWheelY = terrain.getTerrainHeightAt(x + 0.2f, z - 0.5f) + y;
 
             // Calculate the average height of the car body (based on wheel heights)
             float averageHeight = (frontLeftWheelY + frontRightWheelY + rearLeftWheelY + rearRightWheelY) / 4.0f;
@@ -584,92 +584,7 @@ public class Main {
 
             GL11.glEnd();
         }
-
-        private void renderWheel() {
-            float radius = 0.4f;
-            float width = 0.2f;
-            int numSegments = 36;
-
-            GL11.glColor3f(0.2f, 0.2f, 0.2f); // Dark grey for the wheels
-            GL11.glShadeModel(GL11.GL_SMOOTH);
-
-            FloatBuffer wheelSpecular = BufferUtils.createFloatBuffer(4).put(new float[] { 0.1f, 0.1f, 0.1f, 1.0f });
-            wheelSpecular.flip();
-            GL11.glMaterialfv(GL11.GL_FRONT, GL11.GL_SPECULAR, wheelSpecular);
-            GL11.glMaterialf(GL11.GL_FRONT, GL11.GL_SHININESS, 16.0f); // Low shininess for wheels
-
-            GL11.glPushMatrix();
-            GL11.glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
-
-            // Front face (at x = -width/2)
-            GL11.glBegin(GL11.GL_TRIANGLE_FAN);
-
-            GL11.glVertex3f(0.0f, 0.0f, -width / 2); // Center of the circle
-            for (int i = 0; i <= numSegments; i++) {
-                double angle = 2 * Math.PI * i / numSegments;
-                GL11.glVertex3f((float) Math.cos(angle) * radius, (float) Math.sin(angle) * radius, width / 2);
-            }
-            GL11.glEnd();
-
-            // Rear face (at x = +width/2)
-            GL11.glBegin(GL11.GL_TRIANGLE_FAN);
-            GL11.glVertex3f(0.0f, 0.0f, width / 2); // Center of the circle
-            for (int i = 0; i <= numSegments; i++) {
-                double angle = 2 * Math.PI * i / numSegments;
-                GL11.glVertex3f((float) Math.cos(angle) * radius, (float) Math.sin(angle) * radius, width / 2);
-            }
-            GL11.glEnd();
-
-            GL11.glBegin(GL11.GL_QUAD_STRIP);
-            for (int i = 0; i <= numSegments; i++) {
-                double angle = 2 * Math.PI * i / numSegments;
-                float x = (float) Math.cos(angle) * radius;
-                float y = (float) Math.sin(angle) * radius;
-
-                // Set normals to make wheel sides visible
-                GL11.glNormal3f(x, y, 0);
-                GL11.glVertex3f(x, y, -width / 2);
-                GL11.glVertex3f(x, y, width / 2);
-            }
-            GL11.glEnd();
-
-            GL11.glPopMatrix();
-        }
-
-        private void renderWheels(Terrain terrain) {
-            GL11.glColor3f(0.0f, 0.0f, 0.0f); // Black color for wheels
-
-            // Define the wheel height offset
-            float wheelHeightOffset = 2.2f; // Lower the wheels by this amount relative to the car body
-
-            // Front-left wheel
-            GL11.glPushMatrix();
-            float frontLeftWheelY = terrain.getTerrainHeightAt(this.getX() - 0.2f, this.getZ() + 0.5f);
-            GL11.glTranslatef(-0.6f, frontLeftWheelY + 0.2f - wheelHeightOffset, 0.5f); // Lower the wheel by the offset
-            renderWheel();
-            GL11.glPopMatrix();
-
-            // Front-right wheel
-            GL11.glPushMatrix();
-            float frontRightWheelY = terrain.getTerrainHeightAt(this.getX() + 0.2f, this.getZ() + 0.5f);
-            GL11.glTranslatef(0.6f, frontRightWheelY + 0.2f - wheelHeightOffset, 0.5f); // Lower the wheel by the offset
-            renderWheel();
-            GL11.glPopMatrix();
-
-            // Reat-left wheel
-            GL11.glPushMatrix();
-            float rearLeftWheelY = terrain.getTerrainHeightAt(this.getX() - 0.2f, this.getZ() - 0.5f);
-            GL11.glTranslatef(-0.6f, rearLeftWheelY + 0.2f - wheelHeightOffset, -0.5f); // Lower the wheel by the offset
-            renderWheel();
-            GL11.glPopMatrix();
-
-            // Rear-right wheel
-            GL11.glPushMatrix();
-            float rearRightWheelY = terrain.getTerrainHeightAt(this.getX() + 0.2f, this.getZ() - 0.5f);
-            GL11.glTranslatef(0.6f, rearRightWheelY + 0.2f - wheelHeightOffset, -0.5f); // Lower the wheel by the offset
-            renderWheel();
-            GL11.glPopMatrix();
-        }
+        // NOAH: Removed renderWheels and renderWheel
     }
 
     public static class OBJLoader {
