@@ -24,7 +24,7 @@ public class Main {
     private Car enemyCar;
     private boolean tabPressed = false;
 
-    private boolean carOffTerrain = true; // titus added to check if the car is off the terrain
+    private boolean restartGame = true; // titus: Added restartGame variable
 
     public static void main(String[] args) {
         new Main().run();
@@ -32,10 +32,13 @@ public class Main {
 
     public void run() {
         // NOAH: rolled back looping in main
-        init();
-        loop();
-        GLFW.glfwDestroyWindow(window);
-        GLFW.glfwTerminate();
+        while (restartGame) { // titus: Added restartGame check
+            restartGame = false; // Reset restartGame for the next run
+            init();
+            loop();
+            GLFW.glfwDestroyWindow(window);
+            GLFW.glfwTerminate();
+        }
     }
 
     private void init() {
@@ -87,7 +90,7 @@ public class Main {
     }
 
     private void loop() {
-        while (!GLFW.glfwWindowShouldClose(window)) { // NOAH: rolledback to not cut program when off edge
+        while (!GLFW.glfwWindowShouldClose(window) && !restartGame) { // NOAH: rolledback to not cut program when off edge; titus added restartGame check
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
             GL11.glLoadIdentity();
@@ -111,9 +114,17 @@ public class Main {
             enemyCar.render(terrain, -1);
             moveEnemyCar();
             tryFall(enemyCar);
+            checkGameRestart(); // titus: Added restartGame check
 
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
+        }
+    }
+
+    public void checkGameRestart() { // titus: Added restartGame Function
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_R) == GLFW.GLFW_PRESS) {
+            restartGame = true;
+            System.err.println("Restarting game...");
         }
     }
 
