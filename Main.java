@@ -86,11 +86,12 @@ public class Main {
         enemyCar = new Car();
         enemyCar.setPosition(20, 0, 20);
 
-        terrain = new Terrain("fractal_terrain.obj"); // Load the terrain from an OBJ file
+        terrain = new Terrain("terrain.obj"); // Load the terrain from an OBJ file
     }
 
     private void loop() {
-        while (!GLFW.glfwWindowShouldClose(window) && !restartGame) { // NOAH: rolledback to not cut program when off edge; titus added restartGame check
+        while (!GLFW.glfwWindowShouldClose(window) && !restartGame) { // NOAH: rolledback to not cut program when off
+                                                                      // edge; titus added restartGame check
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
             GL11.glLoadIdentity();
@@ -228,7 +229,7 @@ public class Main {
 
     public void setupCamera() {
         // Position the camera behind the car, following it
-        GL11.glTranslatef(0, -5, -20); // Adjust this for better view
+        GL11.glTranslatef(0, -10, -25); // Adjust this for better view
         GL11.glRotatef(20, 1, 0, 0); // slight downward angle
     }
 
@@ -695,7 +696,6 @@ public class Main {
         }
 
         public void render() {
-            GL11.glColor3f(0.3f, 0.8f, 0.3f); // Lighter green for the terrain
             GL11.glShadeModel(GL11.GL_SMOOTH); // Smooth shading for better Phong effect
 
             // Adjust terrain material properties to make it brighter
@@ -720,16 +720,28 @@ public class Main {
             int[] indices = model.getIndices();
 
             GL11.glBegin(GL11.GL_TRIANGLES);
+            float incValue = 0.075f;
             for (int i = 0; i < indices.length; i += 3) {
+                float r = 0.51f, g = 0.40f, b = 0.22f;
                 int vIndex1 = indices[i] * 3;
                 int vIndex2 = indices[i + 1] * 3;
                 int vIndex3 = indices[i + 2] * 3;
+                GL11.glColor3f(r, g, b);
                 GL11.glNormal3f(normals[vIndex1], normals[vIndex1 + 1], normals[vIndex1 + 2]);
                 GL11.glVertex3f(vertices[vIndex1], vertices[vIndex1 + 1], vertices[vIndex1 + 2]);
 
+                r += incValue;
+                g += incValue;
+                b += incValue;
+                GL11.glColor3f(r, g, b);
                 GL11.glNormal3f(normals[vIndex2], normals[vIndex2 + 1], normals[vIndex2 + 2]);
                 GL11.glVertex3f(vertices[vIndex2], vertices[vIndex2 + 1], vertices[vIndex2 + 2]);
 
+                r += incValue;
+                g += incValue;
+                b += incValue;
+
+                GL11.glColor3f(r, g, b);
                 GL11.glNormal3f(normals[vIndex3], normals[vIndex3 + 1], normals[vIndex3 + 2]);
                 GL11.glVertex3f(vertices[vIndex3], vertices[vIndex3 + 1], vertices[vIndex3 + 2]);
             }
