@@ -344,7 +344,7 @@ public class Main {
             activeCar.accelerate();
         }
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_DOWN) == GLFW.GLFW_PRESS) {
-            activeCar.decelerate();
+            activeCar.reverse();
         }
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT) == GLFW.GLFW_PRESS) {
             activeCar.turnLeft();
@@ -465,6 +465,12 @@ public class Main {
 
         public void decelerate() {
             if (speed > 0) {
+                speed -= acceleration;
+            }
+        }
+
+        public void reverse() {
+            if (speed > -maxSpeed) {
                 speed -= acceleration;
             }
         }
