@@ -25,7 +25,8 @@ enum GameState {
 enum MenuState {
   MAIN_MENU,
   HOSTING,
-  JOINING
+  JOINING,
+  JOINED_LOBBY
 }
 
 public class Main {
@@ -76,9 +77,8 @@ public class Main {
       if (menuState == MenuState.JOINING && action == GLFW.GLFW_PRESS) {
           if (key == GLFW.GLFW_KEY_ENTER) {
             System.out.println("Joining server at " + typedIp + "...");
-            new ClientThread(typedIp).start();
+            new ClientThread(typedIp, this).start();
             typedIp = ""; // Clear for next time
-            menuState = MenuState.MAIN_MENU; // Optional: return to menu after joining
           } else if (key == GLFW.GLFW_KEY_BACKSPACE && typedIp.length() > 0) {
             typedIp = typedIp.substring(0, typedIp.length() - 1);
           } else {
@@ -182,7 +182,11 @@ public class Main {
           drawText("Player: " + player, 300, y);
           y += 30;
       }
-  
+
+      // Start Game button
+      drawButton(300, 420, 200, 50, "Start Game");
+      drawText("Start Game", 400, 435);
+
       // Back button
       drawButton(300, 500, 200, 50, "Back to Menu");
       drawText("Back to Menu", 400, 515);
@@ -195,7 +199,14 @@ public class Main {
       // Back button
       drawButton(300, 500, 200, 50, "Back to Menu");
       drawText("Back to Menu", 400, 515);
-  }  
+  }
+
+  if (menuState == MenuState.JOINED_LOBBY) {
+    drawText("Hi, welcome to the lobby", 300, 200);
+    drawButton(300, 500, 200, 50, "Back to Menu");
+    drawText("Back to Menu", 400, 515);
+  }
+
   
     GL11.glPopMatrix();
     GL11.glMatrixMode(GL11.GL_PROJECTION);
@@ -262,6 +273,17 @@ private void handleMenuInput() {
               }
               playerList.clear();
               menuState = MenuState.MAIN_MENU;
+              if (serverThread != null) {
+                serverThread.broadcastMessage("START_GAME");
+              }
+          }
+          // Start Game button clicked
+          if (xpos[0] >= 300 && xpos[0] <= 500 && ypos[0] >= 420 && ypos[0] <= 470) {
+            System.out.println("Start Game clicked!");
+            gameState = GameState.PLAYING;
+            menuState = MenuState.MAIN_MENU;
+
+            // TODO: broadcast "START_GAME" to all clients
           }
       }
 
@@ -273,7 +295,24 @@ private void handleMenuInput() {
               menuState = MenuState.MAIN_MENU;
           }
       }
+
+      // === JOINED LOBBY MENU ===
+      if (menuState == MenuState.JOINED_LOBBY) {
+          if (xpos[0] >= 300 && xpos[0] <= 500 && ypos[0] >= 500 && ypos[0] <= 550) {
+              System.out.println("Back to Menu clicked (JOINED LOBBY)");
+              typedIp = "";
+              menuState = MenuState.MAIN_MENU;
+          }
+      }
   }
+}
+
+public void setMenuState(MenuState menuState) {
+    this.menuState = menuState;
+}
+
+public void setGameState(GameState state) {
+  this.gameState = state;
 }
 
 private String getLocalIp() {
@@ -822,27 +861,15 @@ class Terrain {
     GL11.glShadeModel(GL11.GL_SMOOTH); // Smooth shading for better Phong effect
 
     // Adjust terrain material properties to make it brighter
-    FloatBuffer terrainAmbient = BufferUtils.createFloatBuffer(4).put(new float[] { 0.6f, 0.8f, 0.6f, 1.0f }); // Higher
-                                                                                                               // ambient
-                                                                                                               // light
-                                                                                                               // reflection
-    FloatBuffer terrainDiffuse = BufferUtils.createFloatBuffer(4).put(new float[] { 0.7f, 0.9f, 0.7f, 1.0f }); // Higher
-                                                                                                               // diffuse
-                                                                                                               // reflection
-                                                                                                               // for
-                                                                                                               // visibility
-    FloatBuffer terrainSpecular = BufferUtils.createFloatBuffer(4).put(new float[] { 0.2f, 0.2f, 0.2f, 1.0f }); // Light
-                                                                                                                // specular
-                                                                                                                // highlight
-                                                                                                                // for
-                                                                                                                // subtle
-                                                                                                                // shine
+    FloatBuffer terrainAmbient = BufferUtils.createFloatBuffer(4).put(new float[] { 0.6f, 0.8f, 0.6f, 1.0f }); // Higher ambient light reflection
+    FloatBuffer terrainDiffuse = BufferUtils.createFloatBuffer(4).put(new float[] { 0.7f, 0.9f, 0.7f, 1.0f }); // Higher diffuse reflection for visibility
+    FloatBuffer terrainSpecular = BufferUtils.createFloatBuffer(4).put(new float[] { 0.2f, 0.2f, 0.2f, 1.0f }); // Light specular highlight for subtle shine
 
     terrainAmbient.flip();
     terrainDiffuse.flip();
     terrainSpecular.flip();
 
-    GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_AMBIENT, terrainAmbient);
+    GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_AMBIENT, terrainAmbient); 
     GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_DIFFUSE, terrainDiffuse);
     GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_SPECULAR, terrainSpecular);
     GL11.glMaterialf(GL11.GL_FRONT_AND_BACK, GL11.GL_SHININESS, 10.0f); // Lower shininess for a more matte look
