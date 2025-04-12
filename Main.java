@@ -1,6 +1,12 @@
+/*
+javac -classpath ".;C:\Program Files\lwjgl-release-3.3.6-custom\*" Main.java TrueTypeFont.java
+java -classpath ".;\Program Files\lwjgl-release-3.3.6-custom\*" Main
+*/
+
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,6 +15,9 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
+
+enum GameState { MENU, PLAYING }
+enum MenuState { MAIN_MENU, HOSTING, JOINING, JOINED_LOBBY }
 
 public class Main {
 
@@ -25,6 +34,15 @@ public class Main {
     private boolean tabPressed = false;
 
     private boolean restartGame = true; // titus: Added restartGame variable
+
+    private GameState gameState = GameState.MENU;
+    private MenuState menuState = MenuState.MAIN_MENU;
+    private ServerThread serverThread;
+    private TrueTypeFont font;
+    private List<String> playerList = new ArrayList<>();
+    private String hostIp = "Detecting...";
+    private String typedIp = "";
+    private boolean typingActive = false;
 
     public static void main(String[] args) {
         new Main().run();
@@ -52,6 +70,8 @@ public class Main {
         }
         GLFW.glfwMakeContextCurrent(window);
         GL.createCapabilities();
+
+        font = new TrueTypeFont(new java.awt.Font("Arial", java.awt.Font.PLAIN, 24), false);
 
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         GL11.glLoadIdentity();
@@ -90,37 +110,200 @@ public class Main {
     }
 
     private void loop() {
-        while (!GLFW.glfwWindowShouldClose(window) && !restartGame) { // NOAH: rolledback to not cut program when off
-                                                                      // edge; titus added restartGame check
+        while (!GLFW.glfwWindowShouldClose(window) && !restartGame) {
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
-
             GL11.glLoadIdentity();
 
-            // Updae car movement based on user input
-            updateCarMovement();
-
-            Car activeCar = cars.get(currCar);
-            updateCamera(activeCar);
-
-            // Render terrain
-            terrain.render();
-            for (int i = 0; i < cars.size(); i++) { // titus modified so we can see what car we are on
-                Car car = cars.get(i); // titus added
-                car.update();
-                car.render(terrain, i); // titus added carNumber pass
-                tryFall(car);
-                checkCarDistance(activeCar, car); // titus added distance check between cars
+            if (gameState == GameState.MENU || menuState != MenuState.MAIN_MENU) {
+                renderMenu();
+                handleMenuInput();
+            } else if (gameState == GameState.PLAYING) {
+                updateCarMovement();
+                Car activeCar = cars.get(currCar);
+                updateCamera(activeCar);
+                terrain.render();
+                for (Car car : cars) {
+                    car.update();
+                    car.render(terrain, 1);
+                    tryFall(car);
+                }
+                enemyCar.update();
+                enemyCar.render(terrain, -1);
+                moveEnemyCar();
+                tryFall(enemyCar);
+                checkGameRestart();
             }
-
-            enemyCar.update();
-            enemyCar.render(terrain, -1);
-            moveEnemyCar();
-            tryFall(enemyCar);
-            checkCarDistance(activeCar, enemyCar); // titus added distance check between car and the enemy
-            checkGameRestart(); // titus: Added restartGame check
 
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
+        }
+    }
+
+    private void renderMenu() {
+        GL11.glMatrixMode(GL11.GL_PROJECTION);
+        GL11.glPushMatrix();
+        GL11.glLoadIdentity();
+        GL11.glOrtho(0, width, height, 0, -1, 1);
+        GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        GL11.glPushMatrix();
+        GL11.glLoadIdentity();
+
+        if (menuState == MenuState.MAIN_MENU) {
+            drawButton(300, 150, 200, 50, "Start Game");
+            drawButton(300, 220, 200, 50, "Host Game");
+            drawButton(300, 290, 200, 50, "Join Game");
+            drawButton(300, 360, 200, 50, "Exit");
+
+            drawText("Start Game", 400, 150 + 15);
+            drawText("Host Game", 400, 220 + 15);
+            drawText("Join Game", 400, 290 + 15);
+            drawText("Exit", 400, 360 + 15);
+        }
+
+        if (menuState == MenuState.HOSTING) {
+            drawText("Hosting Server", 300, 100);
+            drawText("Your IP: " + hostIp, 300, 130);
+            drawText("Waiting for players...", 300, 160);
+
+            int y = 200;
+            for (String player : playerList) {
+                drawText("Player: " + player, 300, y);
+                y += 30;
+            }
+
+            // Start Game button
+            drawButton(300, 420, 200, 50, "Start Game");
+            drawText("Start Game", 400, 435);
+
+            // Back button
+            drawButton(300, 500, 200, 50, "Back to Menu");
+            drawText("Back to Menu", 400, 515);
+        }
+
+        if (menuState == MenuState.JOINING) {
+            drawText("Enter Host IP:", 300, 150);
+            drawText(typedIp + "_", 300, 180);
+
+            // Back button
+            drawButton(300, 500, 200, 50, "Back to Menu");
+            drawText("Back to Menu", 400, 515);
+        }
+
+        if (menuState == MenuState.JOINED_LOBBY) {
+            drawText("Hi, welcome to the lobby", 300, 200);
+            drawButton(300, 500, 200, 50, "Back to Menu");
+            drawText("Back to Menu", 400, 515);
+        }
+
+
+        GL11.glPopMatrix();
+        GL11.glMatrixMode(GL11.GL_PROJECTION);
+        GL11.glPopMatrix();
+        GL11.glMatrixMode(GL11.GL_MODELVIEW);
+    }
+
+    private void drawButton(int x, int y, int w, int h, String label) {
+        GL11.glColor3f(0.2f, 0.2f, 0.8f); // Button color
+        GL11.glBegin(GL11.GL_QUADS);
+        GL11.glVertex2f(x, y);
+        GL11.glVertex2f(x + w, y);
+        GL11.glVertex2f(x + w, y + h);
+        GL11.glVertex2f(x, y + h);
+        GL11.glEnd();
+    }    
+
+    private void drawText(String text, float x, float y) {
+        // Center the text horizontally
+        int totalWidth = 0;
+        for (int i = 0; i < text.length(); i++) {
+            totalWidth += font.getCharWidth(text.charAt(i));
+        }
+        float centeredX = x - totalWidth / 2f;
+
+        font.drawString(centeredX, y, text);
+    }
+
+    private void handleMenuInput() {
+        if (GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS) {
+            double[] xpos = new double[1];
+            double[] ypos = new double[1];
+            GLFW.glfwGetCursorPos(window, xpos, ypos);
+
+            // No Y flip — GLFW coords are top-left origin, matching how you draw
+
+            // === MAIN MENU ===
+            if (menuState == MenuState.MAIN_MENU) {
+                if (xpos[0] >= 300 && xpos[0] <= 500) {
+                    if (ypos[0] >= 150 && ypos[0] <= 200) {
+                        gameState = GameState.PLAYING;
+                    } else if (ypos[0] >= 220 && ypos[0] <= 270) {
+                        System.out.println("HOST button clicked");
+                        serverThread = new ServerThread(playerList);
+                        serverThread.start();
+                        hostIp = getLocalIp();
+                        menuState = MenuState.HOSTING;
+                    } else if (ypos[0] >= 290 && ypos[0] <= 340) {
+                        System.out.println("JOIN button clicked");
+                        menuState = MenuState.JOINING;
+                    } else if (ypos[0] >= 360 && ypos[0] <= 410) {
+                        GLFW.glfwSetWindowShouldClose(window, true);
+                    }
+                }
+            }
+
+            // === HOSTING MENU ===
+            if (menuState == MenuState.HOSTING) {
+                if (xpos[0] >= 300 && xpos[0] <= 500 && ypos[0] >= 500 && ypos[0] <= 550) {
+                    System.out.println("Back to Menu clicked (HOSTING)");
+                    if (serverThread != null) {
+                        serverThread.shutdown();
+                        serverThread = null;
+                    }
+                    playerList.clear();
+                    menuState = MenuState.MAIN_MENU;
+                    if (serverThread != null) {
+                        serverThread.broadcastMessage("START_GAME");
+                    }
+                }
+                // Start Game button clicked
+                if (xpos[0] >= 300 && xpos[0] <= 500 && ypos[0] >= 420 && ypos[0] <= 470) {
+                    System.out.println("Start Game clicked!");
+                    gameState = GameState.PLAYING;
+                    menuState = MenuState.MAIN_MENU;
+
+                    // TODO: broadcast "START_GAME" to all clients
+                }
+            }
+
+            // === JOINING MENU ===
+            if (menuState == MenuState.JOINING) {
+                if (xpos[0] >= 300 && xpos[0] <= 500 && ypos[0] >= 500 && ypos[0] <= 550) {
+                    System.out.println("Back to Menu clicked (JOINING)");
+                    typedIp = "";
+                    menuState = MenuState.MAIN_MENU;
+                }
+            }
+
+            // === JOINED LOBBY MENU ===
+            if (menuState == MenuState.JOINED_LOBBY) {
+                if (xpos[0] >= 300 && xpos[0] <= 500 && ypos[0] >= 500 && ypos[0] <= 550) {
+                    System.out.println("Back to Menu clicked (JOINED LOBBY)");
+                    typedIp = "";
+                    menuState = MenuState.MAIN_MENU;
+                }
+            }
+        }
+    }
+
+    private boolean inButton(float x, float y, int bx, int by) {
+        return x >= bx && x <= bx + 200 && y >= by && y <= by + 50;
+    }
+
+    private String getLocalIp() {
+        try {
+            return InetAddress.getLocalHost().getHostAddress();
+        } catch (Exception e) {
+            return "Unknown";
         }
     }
 
@@ -852,4 +1035,8 @@ public class Main {
             return Math.abs((x1 * (z2 - z3) + x2 * (z3 - z1) + x3 * (z1 - z2)) / 2.0f);
         }
     }
+
+    public void setGameState(GameState state) {
+        this.gameState = state;
+    }    
 }
