@@ -21,20 +21,29 @@ public class Main {
     private int height = 600;
     private Terrain terrain;
 
-    public int beanCount = 3;
-    private List<BeanCharacter> beans;
-    private int currBean = 0;
+    // NOAH: Added carCount variable
+    public int carCount = 3;
+    // NOAH: END
+
+    // NOAH: Added list of cars and active index
+    private List<Car> cars;
+    private int currCar = 0;
     private boolean tabPressed = false;
+    // NOAH: END
 
     public static void main(String[] args) {
         new Main().run();
     }
 
     public void run() {
-        init();
-        loop();
-        GLFW.glfwDestroyWindow(window);
-        GLFW.glfwTerminate();
+        // NOAH: rolled back looping in main
+        while (restartGame) { // titus: Added restartGame check
+            restartGame = false; // Reset restartGame for the next run
+            init();
+            loop();
+            GLFW.glfwDestroyWindow(window);
+            GLFW.glfwTerminate();
+        }
     }
 
     private void init() {
@@ -68,38 +77,47 @@ public class Main {
 
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
-        beans = new ArrayList<>();
-        for (int i = 0; i < beanCount; i++) {
-            BeanCharacter bean = new BeanCharacter();
-            bean.setPosition((float) (Math.random() * 30), 0.0f, (float) (Math.random() * 30));
-            beans.add(bean);
+        // NOAH: Initialize list of cars and populate with cars
+        cars = new ArrayList<>();
+        for (int i = 0; i < carCount; i++) {
+            // Create a new car object and set its initial position randomly within a range
+            Car car = new Car();
+            // Randomize the car's position in a small range
+            car.setPosition((float) (Math.random() * 30), 0.0f, (float) (Math.random() * 30));
+            cars.add(car);
         }
+        // NOAH: END
 
         terrain = new Terrain("terrain.obj");
     }
 
     private void loop() {
-        while (!GLFW.glfwWindowShouldClose(window)) {
+        while (!GLFW.glfwWindowShouldClose(window) && !restartGame) { // NOAH: rolledback to not cut program when off
+                                                                      // edge; titus added restartGame check
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
             GL11.glLoadIdentity();
 
             updateBeanMovement();
 
-            BeanCharacter activeBean = beans.get(currBean);
-            updateCamera(activeBean);
+            // NOAH START: Update the camera to target the current active car
+            Car activeCar = cars.get(currCar);
+            updateCamera(activeCar);
+            // NOAH: END
 
+            // Render terrain
             terrain.render();
-            for (int i = 0; i < beans.size(); i++) {
-                BeanCharacter bean = beans.get(i);
-                bean.update(terrain);
-                bean.render(terrain, i);
+            // NOAH START: Iterate over cars and update them individually
+            for (int i = 0; i < cars.size(); i++) { // titus modified so we can see what car we are on
+                Car car = cars.get(i); // titus added
+                car.update();
+                car.render(terrain, i); // titus added carNumber pass
             }
+            // NOAH: END
 
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
         }
     }
-
 
     public void initLighting() {
         // Enable lighting and the first light
@@ -167,7 +185,7 @@ public class Main {
 
     public void setupCamera() {
         // Position the camera behind the car, following it
-        GL11.glTranslatef(0, -5, -20); // Adjust this for better view
+        GL11.glTranslatef(0, -10, -25); // Adjust this for better view
         GL11.glRotatef(20, 1, 0, 0); // slight downward angle
     }
 
@@ -193,54 +211,131 @@ public class Main {
       cameraY = lerp(cameraY, targetCameraY, alpha);
       cameraZ = lerp(cameraZ, targetCameraZ, alpha);
 
-      GL11.glLoadIdentity();
-      GL11.glRotatef((float) Math.toDegrees(Math.atan2(bean.getX() - cameraX, bean.getZ() - cameraZ)), 0, 1, 0);
-      GL11.glTranslatef(-cameraX, -cameraY, -cameraZ);
-  }
+        // Reset the model-view matrix
+        GL11.glLoadIdentity();
 
-  private void updateBeanMovement() {
-      if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_TAB) == GLFW.GLFW_PRESS) {
-          if (!tabPressed) {
-              currBean = (currBean + 1) % beans.size();
-              tabPressed = true;
-          }
-      } else {
-          tabPressed = false;
-      }
+        // Set the camera to look at the car
+        gluLookAt(cameraX, cameraY, cameraZ,
+                car.getX(), car.getY(), car.getZ(),
+                0, 1, 0); // Up vector
+    }
 
-      BeanCharacter activeBean = beans.get(currBean);
-      if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_W) == GLFW.GLFW_PRESS) {
-          activeBean.moveForward();
-      }
-      if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_S) == GLFW.GLFW_PRESS) {
-          activeBean.moveBackward();
-      }
-      if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_A) == GLFW.GLFW_PRESS) {
-          activeBean.turnLeft();
-      }
-      if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_D) == GLFW.GLFW_PRESS) {
-          activeBean.turnRight();
-      }
-      if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_SPACE) == GLFW.GLFW_PRESS) {
-          activeBean.shove();
-      }
-  }
+    private void gluLookAt(float eyeX, float eyeY, float eyeZ,
+            float centerX, float centerY, float centerZ,
+            float upX, float upY, float upZ) {
+        // Step 1: Calculate the forward vector (the ddirection the camera is looking)
+        float[] forward = {
+                centerX - eyeX,
+                centerY - eyeY,
+                centerZ - eyeZ
+        };
+        normalize(forward);
 
-  public static class BeanCharacter {
-      private float x = 0, y = 0, z = 0;
-      private float angle = 0;
-      private float speed = 0;
-      private float maxSpeed = 0.15f;
-      private float acceleration = 0.02f;
-      private float friction = 0.92f;
-      private float turnSpeed = 3.0f;
-      private float shoveForce = 0.4f;
-      private float shoveCooldown = 0;
+        // Step 2: define the up fector (y-axis typically)
+        float[] up = { upX, upY, upZ };
 
-      public float getX() { return x; }
-      public float getY() { return y; }
-      public float getZ() { return z; }
-      public float getAngle() { return angle; }
+        // Step 3: calculate the side (right) vector using cross product of forward and
+        // up
+        float[] side = crossProduct(forward, up);
+        normalize(side); // Normalize the side vector
+
+        // Step 4: calculate thetrue up vector (should be perpendicular to both side and
+        // forward
+        up = crossProduct(side, forward);
+
+        // Step 5: create the lookAt matrix (view matrix)
+        FloatBuffer viewMatrix = BufferUtils.createFloatBuffer(16);
+        viewMatrix.put(new float[] {
+                side[0], up[0], -forward[0], 0,
+                side[1], up[1], -forward[1], 0,
+                side[2], up[2], -forward[2], 0,
+                -dotProduct(side, new float[] { eyeX, eyeY, eyeZ }),
+                -dotProduct(up, new float[] { eyeX, eyeY, eyeZ }),
+                dotProduct(forward, new float[] { eyeX, eyeY, eyeZ }),
+                1
+        });
+        viewMatrix.flip(); // Flip the buffer for use by OpenGL
+
+        // Step 6: apply the view matrix
+        GL11.glMultMatrixf(viewMatrix);
+    }
+
+    // Utility functions for vectoer math
+    private void normalize(float[] v) {
+        float length = (float) Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        if (length > 0) {
+            v[0] /= length;
+            v[1] /= length;
+            v[2] /= length;
+        }
+    }
+
+    float[] crossProduct(float[] a, float[] b) {
+        return new float[] {
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0]
+        };
+    }
+
+    private float dotProduct(float[] a, float[] b) {
+        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    }
+
+    private void updateCarMovement() {
+
+        // NOAH START: handle swapping cars and debouncing tab
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_TAB) == GLFW.GLFW_PRESS) {
+            if (!tabPressed) {
+                currCar = (currCar + 1) % cars.size();
+                tabPressed = true;
+            }
+        } else {
+            tabPressed = false;
+        }
+        // NOAH END
+
+        // NOAH START: Handle movement only for the currently active car
+        Car activeCar = cars.get(currCar);
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_UP) == GLFW.GLFW_PRESS) {
+            activeCar.accelerate();
+        }
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_DOWN) == GLFW.GLFW_PRESS) {
+            activeCar.decelerate();
+        }
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT) == GLFW.GLFW_PRESS) {
+            activeCar.turnLeft();
+        }
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT) == GLFW.GLFW_PRESS) {
+            activeCar.turnRight();
+        }
+        // NOAH END:
+    }
+
+    public static class Car {
+        private float x = 0, y = 0, z = 0; // Car's position
+        private float speed = 0; // Current speed
+        private float angle = 0; // Direction the car is facing
+        private float maxSpeed = 0.1f;
+        private float acceleration = 0.01f;
+        private float friction = 0.98f;
+        private float turnSpeed = 2.0f; // Speed of turning
+
+        public float getX() {
+            return x;
+        }
+
+        public float getY() {
+            return y;
+        }
+
+        public float getZ() {
+            return z;
+        }
+
+        public float getAngle() {
+            return angle;
+        }
 
       public void setPosition(float x, float y, float z) {
           this.x = x;
@@ -252,9 +347,11 @@ public class Main {
           if (speed < maxSpeed) speed += acceleration;
       }
 
-      public void moveBackward() {
-          if (speed > -maxSpeed/2) speed -= acceleration/2;
-      }
+        public void decelerate() {
+            if (speed > 0) {
+                speed -= acceleration;
+            }
+        }
 
       public void turnLeft() {
           angle += turnSpeed;
@@ -264,95 +361,208 @@ public class Main {
           angle -= turnSpeed;
       }
 
-      public void shove() {
-          if (shoveCooldown <= 0) {
-              speed += shoveForce;
-              shoveCooldown = 1.0f;
-          }
-      }
+        public void update() {
+            // Update position based on speed and angle
+            x += speed * Math.sin(Math.toRadians(angle));
+            z += speed * Math.cos(Math.toRadians(angle));
 
-      public void update(Terrain terrain) {
-          x += speed * Math.sin(Math.toRadians(angle));
-          z += speed * Math.cos(Math.toRadians(angle));
-          y = terrain.getTerrainHeightAt(x, z) + 0.5f;
-          
-          speed *= friction;
-          if (shoveCooldown > 0) shoveCooldown -= 0.02f;
-      }
+            // Apply friction to slow car down naturally
+            speed *= friction;
+        }
 
-      public void render(Terrain terrain, int beanNumber) {
-          GL11.glPushMatrix();
-          GL11.glTranslatef(x, y, z);
-          GL11.glRotatef(angle, 0, 1, 0);
+        public void render(Terrain terrain, int carNumber) { // titus added carnumber
+            // Get the heights of each wheel
+            float frontLeftWheelY = terrain.getTerrainHeightAt(x - 0.9f, z + 1.5f);
+            float frontRightWheelY = terrain.getTerrainHeightAt(x + 0.9f, z + 1.5f);
+            float rearLeftWheelY = terrain.getTerrainHeightAt(x - 0.9f, z - 1.5f);
+            float rearRightWheelY = terrain.getTerrainHeightAt(x + 0.9f, z - 1.5f);
 
-          // Bean body
-          GL11.glColor3f(0.9f, 0.7f, 0.1f);
-          if (beanNumber % 3 == 0) {
-              GL11.glColor3f(0.8f, 0.2f, 0.2f);
-          } else if (beanNumber % 3 == 1) {
-              GL11.glColor3f(0.2f, 0.8f, 0.2f);
-          } else {
-              GL11.glColor3f(0.2f, 0.2f, 0.8f);
-          }
+            // Calculate the average height of the car body (based on wheel heights)
+            float averageHeight = (frontLeftWheelY + frontRightWheelY + rearLeftWheelY + rearRightWheelY) / 4.0f;
 
-          // Main body
-          GL11.glPushMatrix();
-          GL11.glScalef(0.8f, 1.2f, 0.8f);
-          drawSphere(0.5f);
-          GL11.glPopMatrix();
+            // Car body dimensions
+            float carBodyHeight = 0.5f; // The height of the car body
 
-          // Eyes
-          GL11.glPushMatrix();
-          GL11.glColor3f(1, 1, 1);
-          GL11.glTranslatef(0.2f, 0.4f, 0.4f);
-          drawSphere(0.15f);
-          GL11.glTranslatef(-0.4f, 0, 0);
-          drawSphere(0.15f);
-          GL11.glPopMatrix();
+            // Adjust the height of the car body to be above the wheels
+            // The car body is raised by half of its height so the bottom alighs with the
+            // wheels
+            float carBodyYOffset = 4.0f * carBodyHeight + carBodyHeight / 2.0f;
 
-          // Arms
-          GL11.glPushMatrix();
-          GL11.glColor3f(0.9f, 0.7f, 0.1f);
-          GL11.glRotatef(30, 0, 0, 1);
-          GL11.glTranslatef(0.6f, -0.2f, 0);
-          GL11.glScalef(0.8f, 0.3f, 0.3f);
-          drawSphere(0.3f);
-          GL11.glPopMatrix();
+            // Calculate pitch (forward/backward tilt) and roll (side tilt)
+            float pitch = (frontLeftWheelY + frontRightWheelY) / 2.0f - (rearLeftWheelY + rearRightWheelY) / 2.0f;
+            float roll = (frontLeftWheelY + rearLeftWheelY) / 2.0f - (frontRightWheelY + rearRightWheelY) / 2.0f;
 
-          GL11.glPushMatrix();
-          GL11.glRotatef(-30, 0, 0, 1);
-          GL11.glTranslatef(-0.6f, -0.2f, 0);
-          GL11.glScalef(0.8f, 0.3f, 0.3f);
-          drawSphere(0.3f);
-          GL11.glPopMatrix();
+            // Apply the calculated pitch, roll, and average height to the car body
+            GL11.glPushMatrix();
 
-          GL11.glPopMatrix();
-      }
+            // Translate teh car body to the average height plus the offset to position it
+            // above the wheels
+            GL11.glTranslatef(x, averageHeight + carBodyYOffset, z);
 
-      private void drawSphere(float radius) {
-          GL11.glShadeModel(GL11.GL_SMOOTH);
-          GL11.glBegin(GL11.GL_QUAD_STRIP);
-          for (int i = 0; i <= 360; i += 10) {
-              float theta = (float) Math.toRadians(i);
-              float nextTheta = (float) Math.toRadians(i + 10);
-              
-              for (int j = 0; j <= 180; j += 10) {
-                  float phi = (float) Math.toRadians(j);
-                  float x = (float) (radius * Math.cos(theta) * Math.sin(phi));
-                  float y = (float) (radius * Math.cos(phi));
-                  float z = (float) (radius * Math.sin(theta) * Math.sin(phi));
-                  GL11.glNormal3f(x, y, z);
-                  GL11.glVertex3f(x, y, z);
-                  
-                  x = (float) (radius * Math.cos(nextTheta) * Math.sin(phi));
-                  z = (float) (radius * Math.sin(nextTheta) * Math.sin(phi));
-                  GL11.glNormal3f(x, y, z);
-                  GL11.glVertex3f(x, y, z);
-              }
-          }
-          GL11.glEnd();
-      }
-  }
+            // Rotate the car for pitch (tilt forward/backward) and roll (tilt left/right)
+            GL11.glRotatef(roll * 10.0f, 0, 0, 1); // Roll around the Z-axis
+            GL11.glRotatef(pitch * 10.0f, 1, 0, 0); // Pitch around the X-axis
+
+            // Rotate the car in the direction it's facing
+            GL11.glRotatef(angle, 0, 1, 0);
+
+            // Render the car body
+            renderCarBody(carNumber); // Call thee updated renderCarBody method // Titus added carNumber
+
+            // Render the wheels
+            renderWheels(terrain); // Render the wheels based on terrain
+
+            GL11.glPopMatrix();
+        }
+
+        private void renderCarBody(int carNumber) { // titus added carNumber
+            if (carNumber % 3 == 0) { // titus added different colors for the cars
+                GL11.glColor3f(1.0f, 0.0f, 0.0f); // Red for car 1
+            } else if (carNumber % 3 == 1) {
+                GL11.glColor3f(1.0f, 1.0f, 1.0f); // White for car 2
+            } else {
+                GL11.glColor3f(0.0f, 0.0f, 1.0f); // Blue for car 3
+            }
+            GL11.glShadeModel(GL11.GL_SMOOTH); // Smooth shading for Phong
+
+            FloatBuffer carBodySpecular = BufferUtils.createFloatBuffer(4).put(new float[] { 0.9f, 0.9f, 0.9f, 1.0f });
+            carBodySpecular.flip();
+            GL11.glMaterialfv(GL11.GL_FRONT, GL11.GL_SPECULAR, carBodySpecular);
+            GL11.glMaterialf(GL11.GL_FRONT, GL11.GL_SHININESS, 64.0f); // High shininess for car body
+
+            float length = 4.0f;
+            float width = 2.0f;
+            float height = 0.5f;
+
+            GL11.glBegin(GL11.GL_QUADS);
+
+            // Front face
+            GL11.glNormal3f(0, 0, 1);
+            GL11.glVertex3f(-width / 2, -height / 2, length / 2);
+            GL11.glVertex3f(width / 2, -height / 2, length / 2);
+            GL11.glVertex3f(width / 2, height / 2, length / 2);
+            GL11.glVertex3f(-width / 2, height / 2, length / 2);
+
+            // Back face (z = -length/2)
+            GL11.glVertex3f(-width / 2, -height / 2, -length / 2);
+            GL11.glVertex3f(width / 2, -height / 2, -length / 2);
+            GL11.glVertex3f(width / 2, height / 2, -length / 2);
+            GL11.glVertex3f(-width / 2, height / 2, -length / 2);
+
+            // Left face (x = -width/2)
+            GL11.glVertex3f(-width / 2, -height / 2, -length / 2);
+            GL11.glVertex3f(-width / 2, -height / 2, length / 2);
+            GL11.glVertex3f(-width / 2, height / 2, length / 2);
+            GL11.glVertex3f(-width / 2, height / 2, -length / 2);
+
+            // Right face (x = +width/2)
+            GL11.glVertex3f(width / 2, -height / 2, -length / 2);
+            GL11.glVertex3f(width / 2, -height / 2, length / 2);
+            GL11.glVertex3f(width / 2, height / 2, length / 2);
+            GL11.glVertex3f(width / 2, height / 2, -length / 2);
+
+            // Top face (y = +height/2)
+            GL11.glVertex3f(-width / 2, height / 2, -length / 2);
+            GL11.glVertex3f(width / 2, height / 2, -length / 2);
+            GL11.glVertex3f(width / 2, height / 2, length / 2);
+            GL11.glVertex3f(-width / 2, height / 2, length / 2);
+
+            // Bottom face (y = -height/2)
+            GL11.glVertex3f(-width / 2, -height / 2, -length / 2);
+            GL11.glVertex3f(width / 2, -height / 2, -length / 2);
+            GL11.glVertex3f(width / 2, -height / 2, length / 2);
+            GL11.glVertex3f(-width / 2, -height / 2, length / 2);
+
+            GL11.glEnd();
+        }
+
+        private void renderWheel() {
+            float radius = 0.4f;
+            float width = 0.2f;
+            int numSegments = 36;
+
+            GL11.glColor3f(0.2f, 0.2f, 0.2f); // Dark grey for the wheels
+            GL11.glShadeModel(GL11.GL_SMOOTH);
+
+            FloatBuffer wheelSpecular = BufferUtils.createFloatBuffer(4).put(new float[] { 0.1f, 0.1f, 0.1f, 1.0f });
+            wheelSpecular.flip();
+            GL11.glMaterialfv(GL11.GL_FRONT, GL11.GL_SPECULAR, wheelSpecular);
+            GL11.glMaterialf(GL11.GL_FRONT, GL11.GL_SHININESS, 16.0f); // Low shininess for wheels
+
+            GL11.glPushMatrix();
+            GL11.glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+
+            // Front face (at x = -width/2)
+            GL11.glBegin(GL11.GL_TRIANGLE_FAN);
+
+            GL11.glVertex3f(0.0f, 0.0f, -width / 2); // Center of the circle
+            for (int i = 0; i <= numSegments; i++) {
+                double angle = 2 * Math.PI * i / numSegments;
+                GL11.glVertex3f((float) Math.cos(angle) * radius, (float) Math.sin(angle) * radius, width / 2);
+            }
+            GL11.glEnd();
+
+            // Rear face (at x = +width/2)
+            GL11.glBegin(GL11.GL_TRIANGLE_FAN);
+            GL11.glVertex3f(0.0f, 0.0f, width / 2); // Center of the circle
+            for (int i = 0; i <= numSegments; i++) {
+                double angle = 2 * Math.PI * i / numSegments;
+                GL11.glVertex3f((float) Math.cos(angle) * radius, (float) Math.sin(angle) * radius, width / 2);
+            }
+            GL11.glEnd();
+
+            GL11.glBegin(GL11.GL_QUAD_STRIP);
+            for (int i = 0; i <= numSegments; i++) {
+                double angle = 2 * Math.PI * i / numSegments;
+                float x = (float) Math.cos(angle) * radius;
+                float y = (float) Math.sin(angle) * radius;
+
+                // Set normals to make wheel sides visible
+                GL11.glNormal3f(x, y, 0);
+                GL11.glVertex3f(x, y, -width / 2);
+                GL11.glVertex3f(x, y, width / 2);
+            }
+            GL11.glEnd();
+
+            GL11.glPopMatrix();
+        }
+
+        private void renderWheels(Terrain terrain) {
+            GL11.glColor3f(0.0f, 0.0f, 0.0f); // Black color for wheels
+
+            // Define the wheel height offset
+            float wheelHeightOffset = 0.8f; // Lower the wheels by this amount relative to the car body
+
+            // Front-left wheel
+            GL11.glPushMatrix();
+            float frontLeftWheelY = terrain.getTerrainHeightAt(this.getX() - 0.9f, this.getZ() + 1.5f);
+            GL11.glTranslatef(-0.9f, frontLeftWheelY + 0.5f - wheelHeightOffset, 1.5f); // Lower the wheel by the offset
+            renderWheel();
+            GL11.glPopMatrix();
+
+            // Front-right wheel
+            GL11.glPushMatrix();
+            float frontRightWheelY = terrain.getTerrainHeightAt(this.getX() + 0.9f, this.getZ() + 1.5f);
+            GL11.glTranslatef(0.9f, frontRightWheelY + 0.5f - wheelHeightOffset, 1.5f); // Lower the wheel by the offset
+            renderWheel();
+            GL11.glPopMatrix();
+
+            // Reat-left wheel
+            GL11.glPushMatrix();
+            float rearLeftWheelY = terrain.getTerrainHeightAt(this.getX() - 0.9f, this.getZ() - 1.5f);
+            GL11.glTranslatef(-0.9f, rearLeftWheelY + 0.5f - wheelHeightOffset, -1.5f); // Lower the wheel by the offset
+            renderWheel();
+            GL11.glPopMatrix();
+
+            // Rear-right wheel
+            GL11.glPushMatrix();
+            float rearRightWheelY = terrain.getTerrainHeightAt(this.getX() + 0.9f, this.getZ() - 1.5f);
+            GL11.glTranslatef(0.9f, rearRightWheelY + 0.5f - wheelHeightOffset, -1.5f); // Lower the wheel by the offset
+            renderWheel();
+            GL11.glPopMatrix();
+        }
+    }
+
     public static class OBJLoader {
         public Model loadModel(String fileName) throws IOException {
             BufferedReader reader = new BufferedReader(new FileReader(fileName));
@@ -450,7 +660,6 @@ public class Main {
         }
 
         public void render() {
-            GL11.glColor3f(0.3f, 0.8f, 0.3f); // Lighter green for the terrain
             GL11.glShadeModel(GL11.GL_SMOOTH); // Smooth shading for better Phong effect
 
             // Adjust terrain material properties to make it brighter
@@ -475,16 +684,28 @@ public class Main {
             int[] indices = model.getIndices();
 
             GL11.glBegin(GL11.GL_TRIANGLES);
+            float incValue = 0.075f;
             for (int i = 0; i < indices.length; i += 3) {
+                float r = 0.51f, g = 0.40f, b = 0.22f;
                 int vIndex1 = indices[i] * 3;
                 int vIndex2 = indices[i + 1] * 3;
                 int vIndex3 = indices[i + 2] * 3;
+                GL11.glColor3f(r, g, b);
                 GL11.glNormal3f(normals[vIndex1], normals[vIndex1 + 1], normals[vIndex1 + 2]);
                 GL11.glVertex3f(vertices[vIndex1], vertices[vIndex1 + 1], vertices[vIndex1 + 2]);
 
+                r += incValue;
+                g += incValue;
+                b += incValue;
+                GL11.glColor3f(r, g, b);
                 GL11.glNormal3f(normals[vIndex2], normals[vIndex2 + 1], normals[vIndex2 + 2]);
                 GL11.glVertex3f(vertices[vIndex2], vertices[vIndex2 + 1], vertices[vIndex2 + 2]);
 
+                r += incValue;
+                g += incValue;
+                b += incValue;
+
+                GL11.glColor3f(r, g, b);
                 GL11.glNormal3f(normals[vIndex3], normals[vIndex3 + 1], normals[vIndex3 + 2]);
                 GL11.glVertex3f(vertices[vIndex3], vertices[vIndex3 + 1], vertices[vIndex3 + 2]);
             }
