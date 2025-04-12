@@ -161,11 +161,11 @@ public class Main {
         float fallSpeed = 0.1f;
         if (carX < terrainMinX || carX > terrainMaxX || carZ < terrainMinZ || carZ > terrainMaxZ) {
             car.setPosition(car.getX(), car.getY() - fallSpeed, car.getZ());
+            if (carY < 0) {
+                car.hasFallenOffEdge = true;
+            }
         }
 
-        if (carY < 0) {
-            car.hasFallenOffEdge = true;
-        }
     }
 
     public void initLighting() {
