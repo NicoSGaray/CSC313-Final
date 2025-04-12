@@ -155,11 +155,16 @@ public class Main {
         // Check if the car is off the terrain
         float carX = car.getX();
         float carZ = car.getZ();
+        float carY = car.getY();
 
         // Apply falling logic if off the terrain
         float fallSpeed = 0.1f;
         if (carX < terrainMinX || carX > terrainMaxX || carZ < terrainMinZ || carZ > terrainMaxZ) {
             car.setPosition(car.getX(), car.getY() - fallSpeed, car.getZ());
+        }
+
+        if (carY < 0) {
+            car.hasFallenOffEdge = true;
         }
     }
 
@@ -340,6 +345,12 @@ public class Main {
         }
 
         Car activeCar = cars.get(currCar);
+        if (activeCar.hasFallenOffEdge) {
+            return; // Don't allow movement if the car has fallen off the edge
+        }
+
+        // Handle car movement
+        // NOAH: Added decelerate function
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_UP) == GLFW.GLFW_PRESS) {
             activeCar.accelerate();
         }
@@ -433,6 +444,7 @@ public class Main {
         private float acceleration = 0.01f;
         private float friction = 0.98f;
         private float turnSpeed = 2.0f; // Speed of turning
+        private boolean hasFallenOffEdge = false;
 
         public float getX() {
             return x;
