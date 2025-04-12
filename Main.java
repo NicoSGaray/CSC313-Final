@@ -109,16 +109,26 @@ public class Main {
                 car.update();
                 car.render(terrain, i); // titus added carNumber pass
                 tryFall(car);
+                checkCarDistance(activeCar, car); // titus added distance check between cars
             }
 
             enemyCar.update();
             enemyCar.render(terrain, -1);
             moveEnemyCar();
             tryFall(enemyCar);
+            checkCarDistance(activeCar, enemyCar); // titus added distance check between car and the enemy
             checkGameRestart(); // titus: Added restartGame check
 
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
+        }
+    }
+
+    public void checkCarDistance(Car activeCar, Car car) { // titus working on distance calculation
+        float distance = (float) Math.sqrt((activeCar.getX() - car.getX()) * (activeCar.getX() - car.getX()) + (activeCar.getZ() - car.getZ()) * (activeCar.getZ() - car.getZ()));
+        
+        if (distance < 2.0 && distance != 0.0) {
+            System.err.println("Distance between cars: " + distance);
         }
     }
 
@@ -440,9 +450,9 @@ public class Main {
         private float x = 0, y = 0, z = 0; // Car's position
         private float speed = 0; // Current speed
         private float angle = 0; // Direction the car is facing
-        private float maxSpeed = 0.1f;
+        private float maxSpeed = 0.25f; // titus sped up
         private float acceleration = 0.01f;
-        private float friction = 0.98f;
+        private float friction = 0.98f; // titus made higher friction
         private float turnSpeed = 2.0f; // Speed of turning
         private boolean hasFallenOffEdge = false;
 
