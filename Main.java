@@ -28,13 +28,6 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 
-enum GameState {
-    MENU, PLAYING
-}
-
-enum MenuState {
-    MAIN_MENU, HOSTING, JOINING, JOINED_LOBBY
-}
 
 public class Main {
 
@@ -1270,6 +1263,14 @@ class TrueTypeFont {
     }
 }
 
+
+    enum GameState {
+        MENU, PLAYING
+    }
+    
+    enum MenuState {
+        MAIN_MENU, HOSTING, JOINING, JOINED_LOBBY
+    }
 class ClientThread extends Thread {
 
     private String serverIp;
