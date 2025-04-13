@@ -1,9 +1,17 @@
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
+
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.Clip;
+import javax.sound.sampled.FloatControl;
+import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.UnsupportedAudioFileException;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.GLFW;
@@ -26,11 +34,11 @@ public class Main {
 
     private boolean restartGame = true; // titus: Added restartGame variable
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws UnsupportedAudioFileException {
         new Main().run();
     }
 
-    public void run() {
+    public void run() throws UnsupportedAudioFileException {
         // NOAH: rolled back looping in main
         while (restartGame) { // titus: Added restartGame check
             restartGame = false; // Reset restartGame for the next run
@@ -41,10 +49,15 @@ public class Main {
         }
     }
 
-    private void init() {
+    private void init() throws UnsupportedAudioFileException {
         if (!GLFW.glfwInit()) {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
+
+        System.out.println("Loading sounds...");
+        loadSounds(); // NOAH: added call to loadSounds
+        System.out.println("Sounds done loading. Starting BGM...");
+        playSound("BGM", 0.5f); // NOAH: added call to playSound
 
         window = GLFW.glfwCreateWindow(width, height, "Car Simulation", 0, 0);
         if (window == 0) {
@@ -172,6 +185,15 @@ public class Main {
         if (carX < terrainMinX || carX > terrainMaxX || carZ < terrainMinZ || carZ > terrainMaxZ) {
             car.setPosition(car.getX(), car.getY() - fallSpeed, car.getZ());
             if (carY < 0) {
+                if (!car.hasFallenOffEdge) {
+                    System.out.println("Car has fallen off the edge!");
+                    soundCache.values().forEach(clip -> {
+                        if (clip.isRunning()) {
+                            clip.stop();
+                        }
+                    });
+                    playSound("Death", 1.0f); // Optional: Play a sound when the car falls
+                }
                 car.hasFallenOffEdge = true;
             }
         }
@@ -344,6 +366,11 @@ public class Main {
     }
 
     private void updateCarMovement() {
+
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_SPACE) == GLFW.GLFW_PRESS) {
+            // Reset the car's position
+            playSound("Shove", 1.0f);
+        }
 
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_TAB) == GLFW.GLFW_PRESS) {
             if (!tabPressed) {
@@ -851,5 +878,57 @@ public class Main {
         private float triangleArea(float x1, float z1, float x2, float z2, float x3, float z3) {
             return Math.abs((x1 * (z2 - z3) + x2 * (z3 - z1) + x3 * (z1 - z2)) / 2.0f);
         }
+    }
+
+    private static final java.util.Map<String, Clip> soundCache = new java.util.HashMap<>(); // NOAH: added map of
+                                                                                             // sounds
+
+    public static void loadSounds() { // TODO: populate this
+        loadSound("BGM", "Sounds/sample_bgm.wav");
+        loadSound("Shove", "Sounds/Shove.wav");
+        loadSound("Death", "Sounds/Sad_trombone.wav");
+    }
+
+    public static void loadSound(String soundName, String filePath) { // NOAH: added loader for sounds
+        try (AudioInputStream audioIn = AudioSystem.getAudioInputStream(new File(filePath))) {
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioIn);
+            soundCache.put(soundName, clip);
+        } catch (IOException | LineUnavailableException | UnsupportedAudioFileException ex) {
+            System.err.println("Error loading sound: " + ex.getMessage());
+        }
+    }
+
+    public static void playSound(String soundName, float volume) { // NOAH: added sound player
+        Clip clip = soundCache.get(soundName);
+        if (clip == null) {
+            System.err.println("Sound not found: " + soundName);
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                if (clip.isRunning()) {
+                    clip.stop();
+                }
+                clip.setFramePosition(0);
+
+                // Adjust the volume
+                FloatControl volumeControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+                float dB = (float) (20.0 * Math.log10(volume <= 0.0001f ? 0.0001f : volume));
+                volumeControl.setValue(dB);
+
+                // Start playing the clip
+                clip.start();
+
+                // Allow the clip to play without blocking the main thread
+                while (clip.isRunning()) {
+                    Thread.sleep(50);
+                }
+
+            } catch (IllegalArgumentException | InterruptedException ex) {
+                System.err.println("Error playing sound: " + ex.getMessage());
+            }
+        }).start();
     }
 }
