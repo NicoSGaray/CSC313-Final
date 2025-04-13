@@ -74,6 +74,11 @@ public class Main {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
 
+        System.out.println("Loading sounds...");
+        loadSounds(); // NOAH: added call to loadSounds
+        System.out.println("Sounds done loading. Starting BGM...");
+        playSound("BGM", 0.5f); // NOAH: added call to playSound
+
         window = GLFW.glfwCreateWindow(width, height, "Car Simulation", 0, 0);
         if (window == 0) {
             throw new IllegalStateException("Failed to create the GLFW window");
@@ -1313,3 +1318,55 @@ class ClientThread extends Thread {
         }
     }
 }
+
+private static final java.util.Map<String, Clip> soundCache = new java.util.HashMap<>(); // NOAH: added map of
+                                                                                             // sounds
+
+    public static void loadSounds() { // TODO: populate this
+        loadSound("BGM", "Sounds/sample_bgm.wav");
+        loadSound("Shove", "Sounds/Shove.wav");
+        loadSound("Death", "Sounds/Sad_trombone.wav");
+    }
+
+    public static void loadSound(String soundName, String filePath) { // NOAH: added loader for sounds
+        try (AudioInputStream audioIn = AudioSystem.getAudioInputStream(new File(filePath))) {
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioIn);
+            soundCache.put(soundName, clip);
+        } catch (IOException | LineUnavailableException | UnsupportedAudioFileException ex) {
+            System.err.println("Error loading sound: " + ex.getMessage());
+        }
+    }
+
+    public static void playSound(String soundName, float volume) { // NOAH: added sound player
+        Clip clip = soundCache.get(soundName);
+        if (clip == null) {
+            System.err.println("Sound not found: " + soundName);
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                if (clip.isRunning()) {
+                    clip.stop();
+                }
+                clip.setFramePosition(0);
+
+                // Adjust the volume
+                FloatControl volumeControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+                float dB = (float) (20.0 * Math.log10(volume <= 0.0001f ? 0.0001f : volume));
+                volumeControl.setValue(dB);
+
+                // Start playing the clip
+                clip.start();
+
+                // Allow the clip to play without blocking the main thread
+                while (clip.isRunning()) {
+                    Thread.sleep(50);
+                }
+
+            } catch (IllegalArgumentException | InterruptedException ex) {
+                System.err.println("Error playing sound: " + ex.getMessage());
+            }
+        }).start();
+    }
