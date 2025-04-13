@@ -71,6 +71,27 @@ public class Main {
         GLFW.glfwMakeContextCurrent(window);
         GL.createCapabilities();
 
+        GLFW.glfwSetKeyCallback(window, (win, key, scancode, action, mods) -> {
+            if (menuState == MenuState.JOINING && action == GLFW.GLFW_PRESS) {
+                if (key == GLFW.GLFW_KEY_ENTER) {
+                    System.out.println("Joining server at " + typedIp + "...");
+                    new ClientThread(typedIp, this).start();
+                    typedIp = ""; // Clear for next time
+                } else if (key == GLFW.GLFW_KEY_BACKSPACE && typedIp.length() > 0) {
+                    typedIp = typedIp.substring(0, typedIp.length() - 1);
+                } else {
+                    // Limit to numbers, dots
+                    if ((key >= GLFW.GLFW_KEY_0 && key <= GLFW.GLFW_KEY_9) || key == GLFW.GLFW_KEY_PERIOD) {
+                        char c = (char) key;
+                        if (mods == GLFW.GLFW_MOD_SHIFT && key == GLFW.GLFW_KEY_PERIOD) c = '.'; // handle period
+                        else if (key == GLFW.GLFW_KEY_PERIOD) c = '.';
+                        else c = (char) ('0' + (key - GLFW.GLFW_KEY_0));
+                        typedIp += c;
+                    }
+                }
+            }
+        });
+
         font = new TrueTypeFont(new java.awt.Font("Arial", java.awt.Font.PLAIN, 24), false);
 
         GL11.glMatrixMode(GL11.GL_PROJECTION);
