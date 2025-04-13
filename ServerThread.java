@@ -55,7 +55,9 @@ public class ServerThread extends Thread {
     public void broadcastMessage(String message) {
         for (PrintWriter writer : clientWriters) {
             writer.println(message);
+            writer.flush();
         }
+        System.out.println("[SERVER] Broadcasted message to clients: " + message);
     }
 
     public void shutdown() {

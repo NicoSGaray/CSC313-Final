@@ -135,7 +135,7 @@ public class Main {
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
             GL11.glLoadIdentity();
 
-            if (gameState == GameState.MENU || menuState != MenuState.MAIN_MENU) {
+            if (gameState == GameState.MENU) {
                 renderMenu();
                 handleMenuInput();
             } else if (gameState == GameState.PLAYING) {
@@ -289,10 +289,20 @@ public class Main {
                 // Start Game button clicked
                 if (xpos[0] >= 300 && xpos[0] <= 500 && ypos[0] >= 420 && ypos[0] <= 470) {
                     System.out.println("Start Game clicked!");
+
+                    try {
+                        System.out.println("[HOST] Waiting before broadcasting...");
+                        Thread.sleep(500); // delay for client stabilization
+                        if (serverThread != null) {
+                            serverThread.broadcastMessage("START_GAME");
+                            System.out.println("[HOST] START_GAME broadcast sent.");
+                        }
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
                     gameState = GameState.PLAYING;
                     menuState = MenuState.MAIN_MENU;
-
-                    // TODO: broadcast "START_GAME" to all clients
                 }
             }
 
