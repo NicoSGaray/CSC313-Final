@@ -1,23 +1,40 @@
 /*
 javac -classpath ".;C:\Program Files\lwjgl-release-3.3.6-custom\*" Main.java TrueTypeFont.java
 java -classpath ".;\Program Files\lwjgl-release-3.3.6-custom\*" Main
-*/
+ */
 
+// import server.ServerThread; // Ensure the server package exists or remove this line if unused
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 
-enum GameState { MENU, PLAYING }
-enum MenuState { MAIN_MENU, HOSTING, JOINING, JOINED_LOBBY }
+enum GameState {
+    MENU, PLAYING
+}
+
+enum MenuState {
+    MAIN_MENU, HOSTING, JOINING, JOINED_LOBBY
+}
 
 public class Main {
 
@@ -83,9 +100,13 @@ public class Main {
                     // Limit to numbers, dots
                     if ((key >= GLFW.GLFW_KEY_0 && key <= GLFW.GLFW_KEY_9) || key == GLFW.GLFW_KEY_PERIOD) {
                         char c = (char) key;
-                        if (mods == GLFW.GLFW_MOD_SHIFT && key == GLFW.GLFW_KEY_PERIOD) c = '.'; // handle period
-                        else if (key == GLFW.GLFW_KEY_PERIOD) c = '.';
-                        else c = (char) ('0' + (key - GLFW.GLFW_KEY_0));
+                        if (mods == GLFW.GLFW_MOD_SHIFT && key == GLFW.GLFW_KEY_PERIOD) {
+                            c = '.'; // handle period
+                        } else if (key == GLFW.GLFW_KEY_PERIOD) {
+                            c = '.';
+                        } else {
+                            c = (char) ('0' + (key - GLFW.GLFW_KEY_0));
+                        }
                         typedIp += c;
                     }
                 }
@@ -105,7 +126,7 @@ public class Main {
         GL11.glColorMaterial(GL11.GL_FRONT_AND_BACK, GL11.GL_AMBIENT_AND_DIFFUSE);
 
         // Define light properties
-        FloatBuffer lightPosition = BufferUtils.createFloatBuffer(4).put(new float[] { 0.0f, 10.0f, 10.0f, 1.0f });
+        FloatBuffer lightPosition = BufferUtils.createFloatBuffer(4).put(new float[]{0.0f, 10.0f, 10.0f, 1.0f});
         lightPosition.flip();
         GL11.glLightfv(GL11.GL_LIGHT0, GL11.GL_POSITION, lightPosition);
 
@@ -161,6 +182,7 @@ public class Main {
     }
 
     private void renderMenu() {
+
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         GL11.glPushMatrix();
         GL11.glLoadIdentity();
@@ -216,7 +238,6 @@ public class Main {
             drawText("Back to Menu", 400, 515);
         }
 
-
         GL11.glPopMatrix();
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         GL11.glPopMatrix();
@@ -231,7 +252,7 @@ public class Main {
         GL11.glVertex2f(x + w, y + h);
         GL11.glVertex2f(x, y + h);
         GL11.glEnd();
-    }    
+    }
 
     private void drawText(String text, float x, float y) {
         // Center the text horizontally
@@ -246,12 +267,12 @@ public class Main {
 
     private void handleMenuInput() {
         if (GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS) {
+            System.out.println("click");
             double[] xpos = new double[1];
             double[] ypos = new double[1];
             GLFW.glfwGetCursorPos(window, xpos, ypos);
 
             // No Y flip — GLFW coords are top-left origin, matching how you draw
-
             // === MAIN MENU ===
             if (menuState == MenuState.MAIN_MENU) {
                 if (xpos[0] >= 300 && xpos[0] <= 500) {
@@ -340,7 +361,7 @@ public class Main {
 
     public void checkCarDistance(Car activeCar, Car car) { // titus working on distance calculation
         float distance = (float) Math.sqrt((activeCar.getX() - car.getX()) * (activeCar.getX() - car.getX()) + (activeCar.getZ() - car.getZ()) * (activeCar.getZ() - car.getZ()));
-        
+
         if (distance < 2.0 && distance != 0.0) {
             System.err.println("Distance between cars: " + distance);
         }
@@ -366,14 +387,18 @@ public class Main {
         for (int i = 0; i < vertices.length; i += 3) {
             float x = vertices[i];
             float z = vertices[i + 2];
-            if (x < terrainMinX)
+            if (x < terrainMinX) {
                 terrainMinX = x;
-            if (x > terrainMaxX)
+            }
+            if (x > terrainMaxX) {
                 terrainMaxX = x;
-            if (z < terrainMinZ)
+            }
+            if (z < terrainMinZ) {
                 terrainMinZ = z;
-            if (z > terrainMaxZ)
+            }
+            if (z > terrainMaxZ) {
                 terrainMaxZ = z;
+            }
         }
 
         // Check if the car is off the terrain
@@ -400,20 +425,20 @@ public class Main {
         GL11.glDepthFunc(GL11.GL_LEQUAL);
 
         // Set the light position
-        FloatBuffer lightPosition = BufferUtils.createFloatBuffer(4).put(new float[] { 0.0f, 10.0f, 10.0f, 1.0f });
+        FloatBuffer lightPosition = BufferUtils.createFloatBuffer(4).put(new float[]{0.0f, 10.0f, 10.0f, 1.0f});
         lightPosition.flip();
         GL11.glLightfv(GL11.GL_LIGHT0, GL11.GL_POSITION, lightPosition);
 
         // Set the brighter ambient, diffuse, and specular light
-        FloatBuffer ambientLight = BufferUtils.createFloatBuffer(4).put(new float[] { 0.4f, 0.4f, 0.4f, 1.0f });
+        FloatBuffer ambientLight = BufferUtils.createFloatBuffer(4).put(new float[]{0.4f, 0.4f, 0.4f, 1.0f});
         ambientLight.flip();
         GL11.glLightfv(GL11.GL_LIGHT0, GL11.GL_AMBIENT, ambientLight);
 
-        FloatBuffer diffuseLight = BufferUtils.createFloatBuffer(4).put(new float[] { 1.0f, 1.0f, 1.0f, 1.0f });
+        FloatBuffer diffuseLight = BufferUtils.createFloatBuffer(4).put(new float[]{1.0f, 1.0f, 1.0f, 1.0f});
         diffuseLight.flip();
         GL11.glLightfv(GL11.GL_LIGHT0, GL11.GL_DIFFUSE, diffuseLight);
 
-        FloatBuffer specularLight = BufferUtils.createFloatBuffer(4).put(new float[] { 1.0f, 1.0f, 1.0f, 1.0f });
+        FloatBuffer specularLight = BufferUtils.createFloatBuffer(4).put(new float[]{1.0f, 1.0f, 1.0f, 1.0f});
         // Increase specular highlight
         specularLight.flip();
         GL11.glLightfv(GL11.GL_LIGHT0, GL11.GL_SPECULAR, specularLight);
@@ -423,16 +448,16 @@ public class Main {
         GL11.glColorMaterial(GL11.GL_FRONT_AND_BACK, GL11.GL_AMBIENT_AND_DIFFUSE);
 
         // Set material properties
-        FloatBuffer materialAmbient = BufferUtils.createFloatBuffer(4).put(new float[] { 0.6f, 0.6f, 0.6f, 1.0f });
+        FloatBuffer materialAmbient = BufferUtils.createFloatBuffer(4).put(new float[]{0.6f, 0.6f, 0.6f, 1.0f});
         materialAmbient.flip();
         GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_AMBIENT, materialAmbient);
 
-        FloatBuffer materialDiffuse = BufferUtils.createFloatBuffer(4).put(new float[] { 0.8f, 0.8f, 0.8f, 1.0f });
+        FloatBuffer materialDiffuse = BufferUtils.createFloatBuffer(4).put(new float[]{0.8f, 0.8f, 0.8f, 1.0f});
         // Brighter diffuse reflection
         materialDiffuse.flip();
         GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_DIFFUSE, materialDiffuse);
 
-        FloatBuffer materialSpecular = BufferUtils.createFloatBuffer(4).put(new float[] { 1.0f, 1.0f, 1.0f, 1.0f });
+        FloatBuffer materialSpecular = BufferUtils.createFloatBuffer(4).put(new float[]{1.0f, 1.0f, 1.0f, 1.0f});
         // Specular highlight
         materialSpecular.flip();
         GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_SPECULAR, materialSpecular);
@@ -441,7 +466,7 @@ public class Main {
         // Set shininess (higher = more specular reflection)
 
         // Set global ambient light
-        FloatBuffer globalAmbient = BufferUtils.createFloatBuffer(4).put(new float[] { 0.5f, 0.5f, 0.5f, 1.0f });
+        FloatBuffer globalAmbient = BufferUtils.createFloatBuffer(4).put(new float[]{0.5f, 0.5f, 0.5f, 1.0f});
         globalAmbient.flip();
         GL11.glLightModelfv(GL11.GL_LIGHT_MODEL_AMBIENT, globalAmbient);
     }
@@ -500,14 +525,14 @@ public class Main {
             float upX, float upY, float upZ) {
         // Step 1: Calculate the forward vector (the ddirection the camera is looking)
         float[] forward = {
-                centerX - eyeX,
-                centerY - eyeY,
-                centerZ - eyeZ
+            centerX - eyeX,
+            centerY - eyeY,
+            centerZ - eyeZ
         };
         normalize(forward);
 
         // Step 2: define the up fector (y-axis typically)
-        float[] up = { upX, upY, upZ };
+        float[] up = {upX, upY, upZ};
 
         // Step 3: calculate the side (right) vector using cross product of forward and
         // up
@@ -520,14 +545,14 @@ public class Main {
 
         // Step 5: create the lookAt matrix (view matrix)
         FloatBuffer viewMatrix = BufferUtils.createFloatBuffer(16);
-        viewMatrix.put(new float[] {
-                side[0], up[0], -forward[0], 0,
-                side[1], up[1], -forward[1], 0,
-                side[2], up[2], -forward[2], 0,
-                -dotProduct(side, new float[] { eyeX, eyeY, eyeZ }),
-                -dotProduct(up, new float[] { eyeX, eyeY, eyeZ }),
-                dotProduct(forward, new float[] { eyeX, eyeY, eyeZ }),
-                1
+        viewMatrix.put(new float[]{
+            side[0], up[0], -forward[0], 0,
+            side[1], up[1], -forward[1], 0,
+            side[2], up[2], -forward[2], 0,
+            -dotProduct(side, new float[]{eyeX, eyeY, eyeZ}),
+            -dotProduct(up, new float[]{eyeX, eyeY, eyeZ}),
+            dotProduct(forward, new float[]{eyeX, eyeY, eyeZ}),
+            1
         });
         viewMatrix.flip(); // Flip the buffer for use by OpenGL
 
@@ -546,10 +571,10 @@ public class Main {
     }
 
     float[] crossProduct(float[] a, float[] b) {
-        return new float[] {
-                a[1] * b[2] - a[2] * b[1],
-                a[2] * b[0] - a[0] * b[2],
-                a[0] * b[1] - a[1] * b[0]
+        return new float[]{
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0]
         };
     }
 
@@ -661,6 +686,7 @@ public class Main {
     // NOAH: onWithinDistanceThreshhold END
 
     public static class Car {
+
         private float x = 0, y = 0, z = 0; // Car's position
         private float speed = 0; // Current speed
         private float angle = 0; // Direction the car is facing
@@ -731,7 +757,7 @@ public class Main {
         public void render(Terrain terrain, int carNumber) { // titus added carnumber
             // Get the heights of each wheel
             float frontLeftWheelY = terrain.getTerrainHeightAt(x - 0.2f, z + 0.5f) + y; // NOAH: added support for
-                                                                                        // rendering body when falling
+            // rendering body when falling
             float frontRightWheelY = terrain.getTerrainHeightAt(x + 0.2f, z + 0.5f) + y;
             float rearLeftWheelY = terrain.getTerrainHeightAt(x - 0.2f, z - 0.5f) + y;
             float rearRightWheelY = terrain.getTerrainHeightAt(x + 0.2f, z - 0.5f) + y;
@@ -770,7 +796,6 @@ public class Main {
 
             // // Render the wheels
             // renderWheels(terrain); // Render the wheels based on terrain
-
             GL11.glPopMatrix();
         }
 
@@ -788,7 +813,7 @@ public class Main {
             }
             GL11.glShadeModel(GL11.GL_SMOOTH); // Smooth shading for Phong
 
-            FloatBuffer carBodySpecular = BufferUtils.createFloatBuffer(4).put(new float[] { 0.9f, 0.9f, 0.9f, 1.0f });
+            FloatBuffer carBodySpecular = BufferUtils.createFloatBuffer(4).put(new float[]{0.9f, 0.9f, 0.9f, 1.0f});
             carBodySpecular.flip();
             GL11.glMaterialfv(GL11.GL_FRONT, GL11.GL_SPECULAR, carBodySpecular);
             GL11.glMaterialf(GL11.GL_FRONT, GL11.GL_SHININESS, 64.0f); // High shininess for car body
@@ -842,6 +867,7 @@ public class Main {
     }
 
     public static class OBJLoader {
+
         public Model loadModel(String fileName) throws IOException {
             BufferedReader reader = new BufferedReader(new FileReader(fileName));
             String line;
@@ -852,17 +878,17 @@ public class Main {
             while ((line = reader.readLine()) != null) {
                 String[] tokens = line.split("\\s");
                 if (tokens[0].equals("v")) {
-                    float[] vertex = { Float.parseFloat(tokens[1]), Float.parseFloat(tokens[2]),
-                            Float.parseFloat(tokens[3]) };
+                    float[] vertex = {Float.parseFloat(tokens[1]), Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3])};
                     vertices.add(vertex);
                 } else if (tokens[0].equals("vn")) {
-                    float[] normal = { Float.parseFloat(tokens[1]), Float.parseFloat(tokens[2]),
-                            Float.parseFloat(tokens[3]) };
+                    float[] normal = {Float.parseFloat(tokens[1]), Float.parseFloat(tokens[2]),
+                        Float.parseFloat(tokens[3])};
                     normals.add(normal);
                 } else if (tokens[0].equals("f")) {
-                    int[] face = { Integer.parseInt(tokens[1].split("/")[0]) - 1,
-                            Integer.parseInt(tokens[2].split("/")[0]) - 1,
-                            Integer.parseInt(tokens[3].split("/")[0]) - 1 };
+                    int[] face = {Integer.parseInt(tokens[1].split("/")[0]) - 1,
+                        Integer.parseInt(tokens[2].split("/")[0]) - 1,
+                        Integer.parseInt(tokens[3].split("/")[0]) - 1};
                     faces.add(face);
                 }
             }
@@ -895,13 +921,14 @@ public class Main {
             reader.close();
             System.out.println(
                     "Model loaded successfully with " + vertices.size() + " vertices and " + faces.size()
-                            + " faces and "
-                            + normals.size() + " normals.");
+                    + " faces and "
+                    + normals.size() + " normals.");
             return new Model(verticesArray, normalsArray, indicesArray);
         }
     }
 
     public static class Model {
+
         private float[] vertices;
         private float[] normals;
         private int[] indices;
@@ -926,6 +953,7 @@ public class Main {
     }
 
     public static class Terrain {
+
         private Model model;
 
         public Terrain(String objFilePath) {
@@ -941,11 +969,11 @@ public class Main {
             GL11.glShadeModel(GL11.GL_SMOOTH); // Smooth shading for better Phong effect
 
             // Adjust terrain material properties to make it brighter
-            FloatBuffer terrainAmbient = BufferUtils.createFloatBuffer(4).put(new float[] { 0.6f, 0.8f, 0.6f, 1.0f });
+            FloatBuffer terrainAmbient = BufferUtils.createFloatBuffer(4).put(new float[]{0.6f, 0.8f, 0.6f, 1.0f});
             // Higher ambient light reflection
-            FloatBuffer terrainDiffuse = BufferUtils.createFloatBuffer(4).put(new float[] { 0.7f, 0.9f, 0.7f, 1.0f });
+            FloatBuffer terrainDiffuse = BufferUtils.createFloatBuffer(4).put(new float[]{0.7f, 0.9f, 0.7f, 1.0f});
             // Higher diffuse light reflection for visibility
-            FloatBuffer terrainSpecular = BufferUtils.createFloatBuffer(4).put(new float[] { 0.2f, 0.2f, 0.2f, 1.0f });
+            FloatBuffer terrainSpecular = BufferUtils.createFloatBuffer(4).put(new float[]{0.2f, 0.2f, 0.2f, 1.0f});
             // Light specular highlight for subtle shine
 
             terrainAmbient.flip();
@@ -1069,5 +1097,218 @@ public class Main {
 
     public void setGameState(GameState state) {
         this.gameState = state;
-    }    
+    }
+}
+
+class ServerThread extends Thread {
+
+    private ServerSocket serverSocket;
+    private List<String> playerList;
+    private boolean running = true;
+    private List<PrintWriter> clientWriters = new ArrayList<>();
+
+    public ServerThread(List<String> playerList) {
+        this.playerList = playerList;
+    }
+
+    public void run() {
+        try {
+            serverSocket = new ServerSocket(4444);
+            System.out.println("[SERVER] Waiting for client(s) on port 4444...");
+
+            while (running) {
+                Socket clientSocket = serverSocket.accept();
+                String clientIp = clientSocket.getInetAddress().getHostAddress();
+                System.out.println("[SERVER] Client connected: " + clientIp);
+
+                if (!playerList.contains(clientIp)) {
+                    playerList.add(clientIp);
+                }
+
+                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+
+                out.println("Welcome to the lobby!");
+
+                // OPTIONAL: If you want to keep the connection alive
+                new Thread(() -> {
+                    try {
+                        String line;
+                        while ((line = in.readLine()) != null) {
+                            System.out.println("[SERVER] Received from client: " + line);
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }).start();
+
+                clientWriters.add(out);
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void broadcastMessage(String message) {
+        for (PrintWriter writer : clientWriters) {
+            writer.println(message);
+            writer.flush();
+        }
+        System.out.println("[SERVER] Broadcasted message to clients: " + message);
+    }
+
+    public void shutdown() {
+        running = false;
+        try {
+            if (serverSocket != null) {
+                serverSocket.close();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+class TrueTypeFont {
+
+    private Font font;
+    private Map<Character, Integer> charTextures = new HashMap<>();
+    private Map<Character, Integer> charWidths = new HashMap<>();
+    private int fontHeight;
+
+    public TrueTypeFont(Font font, boolean antiAlias) {
+        this.font = font;
+        buildFont(antiAlias);
+    }
+
+    private void buildFont(boolean antiAlias) {
+        BufferedImage img = new BufferedImage(512, 512, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setFont(font);
+        if (antiAlias) {
+            g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+        }
+        FontMetrics fm = g.getFontMetrics();
+
+        fontHeight = fm.getHeight();
+
+        for (char c = 32; c < 127; c++) {
+            int charWidth = fm.charWidth(c);
+            BufferedImage charImage = new BufferedImage(charWidth, fontHeight, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D cg = charImage.createGraphics();
+            cg.setFont(font);
+            if (antiAlias) {
+                cg.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+            }
+            cg.drawString(String.valueOf(c), 0, fm.getAscent());
+
+            int[] pixels = charImage.getRGB(0, 0, charWidth, fontHeight, null, 0, charWidth);
+            ByteBuffer buffer = BufferUtils.createByteBuffer(charWidth * fontHeight * 4);
+            for (int y = 0; y < fontHeight; y++) {
+                for (int x = 0; x < charWidth; x++) {
+                    int pixel = pixels[y * charWidth + x];
+                    buffer.put((byte) ((pixel >> 16) & 0xFF)); // Red
+                    buffer.put((byte) ((pixel >> 8) & 0xFF));  // Green
+                    buffer.put((byte) (pixel & 0xFF));         // Blue
+                    buffer.put((byte) ((pixel >> 24) & 0xFF)); // Alpha
+                }
+            }
+            buffer.flip();
+
+            int texId = GL11.glGenTextures();
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
+            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, charWidth, fontHeight, 0,
+                    GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+
+            charTextures.put(c, texId);
+            charWidths.put(c, charWidth);
+        }
+    }
+
+    public void drawString(float x, float y, String text) {
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glColor3f(1f, 1f, 1f); // Set text color to white
+
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            Integer texId = charTextures.get(c);
+            Integer w = charWidths.get(c);
+            if (texId == null || w == null) {
+                continue;
+            }
+
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
+            GL11.glBegin(GL11.GL_QUADS);
+            GL11.glTexCoord2f(0, 0);
+            GL11.glVertex2f(x, y);
+            GL11.glTexCoord2f(1, 0);
+            GL11.glVertex2f(x + w, y);
+            GL11.glTexCoord2f(1, 1);
+            GL11.glVertex2f(x + w, y + fontHeight);
+            GL11.glTexCoord2f(0, 1);
+            GL11.glVertex2f(x, y + fontHeight);
+            GL11.glEnd();
+
+            x += w;
+        }
+
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+    }
+
+    public int getCharWidth(char c) {
+        Integer w = charWidths.get(c);
+        return (w != null) ? w : 0;
+    }
+
+    public int getHeight() {
+        return fontHeight;
+    }
+}
+
+class ClientThread extends Thread {
+
+    private String serverIp;
+    private Main mainRef;
+
+    public ClientThread(String ip, Main mainRef) {
+        this.serverIp = ip;
+        this.mainRef = mainRef;
+    }
+
+    public void run() {
+        try {
+            System.out.println("[CLIENT] Attempting to connect to server at IP: " + serverIp + "...");
+            Socket socket = new Socket(serverIp, 4444);
+            System.out.println("[CLIENT] Connected to server.");
+
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+
+            out.println("Hello from client!");
+            System.out.println("[CLIENT] Sent greeting to server.");
+
+            System.out.println("[CLIENT] Waiting for messages from server...");
+
+            String msgFromServer;
+            while ((msgFromServer = in.readLine()) != null) {
+                System.out.println("[CLIENT] Server says: " + msgFromServer);
+
+                if (msgFromServer.equals("START_GAME")) {
+                    System.out.println("[CLIENT] Received START_GAME. Switching to PLAYING state.");
+                    mainRef.setGameState(GameState.PLAYING);
+                    break;
+                }
+            }
+
+            System.out.println("[CLIENT] START_GAME received. Letting main loop take over.");
+        } catch (IOException e) {
+            System.err.println("[CLIENT] Connection error:");
+            e.printStackTrace();
+        }
+    }
 }
