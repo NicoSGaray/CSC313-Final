@@ -138,8 +138,9 @@ public class Main {
     }
 
     public void checkCarDistance(Car activeCar, Car car) { // titus working on distance calculation
-        float distance = (float) Math.sqrt((activeCar.getX() - car.getX()) * (activeCar.getX() - car.getX()) + (activeCar.getZ() - car.getZ()) * (activeCar.getZ() - car.getZ()));
-        
+        float distance = (float) Math.sqrt((activeCar.getX() - car.getX()) * (activeCar.getX() - car.getX())
+                + (activeCar.getZ() - car.getZ()) * (activeCar.getZ() - car.getZ()));
+
         if (distance < 2.0 && distance != 0.0) {
             System.err.println("Distance between cars: " + distance);
         }
@@ -751,56 +752,115 @@ public class Main {
         }
 
         public void render() {
-            GL11.glShadeModel(GL11.GL_SMOOTH); // Smooth shading for better Phong effect
-
-            // Adjust terrain material properties to make it brighter
-            FloatBuffer terrainAmbient = BufferUtils.createFloatBuffer(4).put(new float[] { 0.6f, 0.8f, 0.6f, 1.0f });
-            // Higher ambient light reflection
-            FloatBuffer terrainDiffuse = BufferUtils.createFloatBuffer(4).put(new float[] { 0.7f, 0.9f, 0.7f, 1.0f });
-            // Higher diffuse light reflection for visibility
-            FloatBuffer terrainSpecular = BufferUtils.createFloatBuffer(4).put(new float[] { 0.2f, 0.2f, 0.2f, 1.0f });
-            // Light specular highlight for subtle shine
-
-            terrainAmbient.flip();
-            terrainDiffuse.flip();
-            terrainSpecular.flip();
-
-            GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_AMBIENT, terrainAmbient);
-            GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_DIFFUSE, terrainDiffuse);
-            GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_SPECULAR, terrainSpecular);
-            GL11.glMaterialf(GL11.GL_FRONT_AND_BACK, GL11.GL_SHININESS, 10.0f); // Lower shininess for a more matte look
-
+            // Get model data
             float[] vertices = model.getVertices();
-            float[] normals = model.getNormals();
             int[] indices = model.getIndices();
 
+            // ====== Calculate center of floor for the circle ======
+            float minX = Float.MAX_VALUE, maxX = -Float.MAX_VALUE;
+            float minZ = Float.MAX_VALUE, maxZ = -Float.MAX_VALUE;
+            float maxY = -Float.MAX_VALUE;
+
+            for (int i = 0; i < vertices.length; i += 3) {
+                float x = vertices[i];
+                float y = vertices[i + 1];
+                float z = vertices[i + 2];
+
+                if (x < minX)
+                    minX = x;
+                if (x > maxX)
+                    maxX = x;
+                if (z < minZ)
+                    minZ = z;
+                if (z > maxZ)
+                    maxZ = z;
+
+                if (x >= minX && x <= maxX && z >= minZ && z <= maxZ) {
+                    if (y > maxY)
+                        maxY = y;
+                }
+            }
+
+            float centerX = (minX + maxX) / 2.0f;
+            float centerZ = (minZ + maxZ) / 2.0f;
+
+            // ====== Render the tan floor ======
+            GL11.glDisable(GL11.GL_LIGHTING);
+            GL11.glColor3f(0.82f, 0.71f, 0.55f); // Tan
+
             GL11.glBegin(GL11.GL_TRIANGLES);
-            float incValue = 0.075f;
             for (int i = 0; i < indices.length; i += 3) {
-                float r = 0.51f, g = 0.40f, b = 0.22f;
-                int vIndex1 = indices[i] * 3;
-                int vIndex2 = indices[i + 1] * 3;
-                int vIndex3 = indices[i + 2] * 3;
-                GL11.glColor3f(r, g, b);
-                GL11.glNormal3f(normals[vIndex1], normals[vIndex1 + 1], normals[vIndex1 + 2]);
-                GL11.glVertex3f(vertices[vIndex1], vertices[vIndex1 + 1], vertices[vIndex1 + 2]);
-
-                r += incValue;
-                g += incValue;
-                b += incValue;
-                GL11.glColor3f(r, g, b);
-                GL11.glNormal3f(normals[vIndex2], normals[vIndex2 + 1], normals[vIndex2 + 2]);
-                GL11.glVertex3f(vertices[vIndex2], vertices[vIndex2 + 1], vertices[vIndex2 + 2]);
-
-                r += incValue;
-                g += incValue;
-                b += incValue;
-
-                GL11.glColor3f(r, g, b);
-                GL11.glNormal3f(normals[vIndex3], normals[vIndex3 + 1], normals[vIndex3 + 2]);
-                GL11.glVertex3f(vertices[vIndex3], vertices[vIndex3 + 1], vertices[vIndex3 + 2]);
+                for (int j = 0; j < 3; j++) {
+                    int index = indices[i + j] * 3;
+                    GL11.glVertex3f(vertices[index], vertices[index + 1], vertices[index + 2]);
+                }
             }
             GL11.glEnd();
+
+            // ====== Draw black grid lines following floor ======
+            GL11.glColor3f(0f, 0f, 0f); // Black
+            GL11.glLineWidth(1.2f);
+
+            float step = 2.0f;
+
+            // Draw vertical grid lines (X-direction)
+            for (float x = minX; x <= maxX; x += step) {
+                GL11.glBegin(GL11.GL_LINE_STRIP);
+                for (float z = minZ; z <= maxZ; z += step) {
+                    float closestY = getHeightAtPoint(vertices, x, z);
+                    GL11.glVertex3f(x, closestY + 0.01f, z); // Slight offset to prevent z-fighting
+                }
+                GL11.glEnd();
+            }
+
+            // Draw horizontal grid lines (Z-direction)
+            for (float z = minZ; z <= maxZ; z += step) {
+                GL11.glBegin(GL11.GL_LINE_STRIP);
+                for (float x = minX; x <= maxX; x += step) {
+                    float closestY = getHeightAtPoint(vertices, x, z);
+                    GL11.glVertex3f(x, closestY + 0.01f, z);
+                }
+                GL11.glEnd();
+            }
+
+            // ====== Draw hollow red circle in center ======
+            GL11.glColor3f(0.6f, 0f, 0f); // Dark red
+            float radius = 14.0f;
+            int segments = 100;
+            float yOffset = maxY + 0.05f;
+
+            GL11.glLineWidth(5.0f);
+            GL11.glBegin(GL11.GL_LINE_LOOP);
+            for (int i = 0; i <= segments; i++) {
+                double angle = 2 * Math.PI * i / segments;
+                float x = centerX + (float) Math.cos(angle) * radius;
+                float z = centerZ + (float) Math.sin(angle) * radius;
+                GL11.glVertex3f(x, yOffset, z);
+            }
+            GL11.glEnd();
+            GL11.glLineWidth(1.0f);
+        }
+
+        private float getHeightAtPoint(float[] vertices, float x, float z) {
+            float closestDist = Float.MAX_VALUE;
+            float closestY = 0f;
+
+            for (int i = 0; i < vertices.length; i += 3) {
+                float vx = vertices[i];
+                float vy = vertices[i + 1];
+                float vz = vertices[i + 2];
+
+                float dx = vx - x;
+                float dz = vz - z;
+                float distSq = dx * dx + dz * dz;
+
+                if (distSq < closestDist) {
+                    closestDist = distSq;
+                    closestY = vy;
+                }
+            }
+
+            return closestY;
         }
 
         public float getTerrainHeightAt(float x, float z) {
