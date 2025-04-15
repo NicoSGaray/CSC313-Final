@@ -3,9 +3,7 @@ javac -classpath ".;C:\Program Files\lwjgl-release-3.3.6-custom\*" Main.java Tru
 java -classpath ".;\Program Files\lwjgl-release-3.3.6-custom\*" Main
 */
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
+import java.io.*;
 import java.net.InetAddress;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
@@ -16,7 +14,7 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 
-enum GameState { MENU, PLAYING }
+enum GameState { MENU, PLAYING, GAME_OVER, YOU_WIN }
 enum MenuState { MAIN_MENU, HOSTING, JOINING, JOINED_LOBBY }
 
 public class Main {
@@ -29,7 +27,7 @@ public class Main {
     public int carCount = 3;
 
     private List<Car> cars;
-    private int currCar = 0;
+    private int currCar = -1;
     private Car enemyCar;
     private boolean tabPressed = false;
 
@@ -37,12 +35,16 @@ public class Main {
 
     private GameState gameState = GameState.MENU;
     private MenuState menuState = MenuState.MAIN_MENU;
-    private ServerThread serverThread;
+    private GameServer serverThread;
     private TrueTypeFont font;
     private List<String> playerList = new ArrayList<>();
     private String hostIp = "Detecting...";
     private String typedIp = "";
     private boolean typingActive = false;
+    private GameClient clientThread;
+    private long lastShoveTime = 0;
+    private static final long SHOVE_COOLDOWN_MS = 1000; // 1 second
+    private static final float FALL_THRESHOLD_Y = -5.0f;
 
     public static void main(String[] args) {
         new Main().run();
@@ -75,7 +77,8 @@ public class Main {
             if (menuState == MenuState.JOINING && action == GLFW.GLFW_PRESS) {
                 if (key == GLFW.GLFW_KEY_ENTER) {
                     System.out.println("Joining server at " + typedIp + "...");
-                    new ClientThread(typedIp, this).start();
+                    clientThread = new GameClient(typedIp, this);
+                    clientThread.start();
                     typedIp = ""; // Clear for next time
                 } else if (key == GLFW.GLFW_KEY_BACKSPACE && typedIp.length() > 0) {
                     typedIp = typedIp.substring(0, typedIp.length() - 1);
@@ -116,11 +119,20 @@ public class Main {
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
 
         cars = new ArrayList<>();
+
+        // Fixed spawn positions for each player/car
+        float[][] spawnPositions = {
+                {2f, 2f},     // Player 0 (Host)
+                {47f, 2f},     // Player 1
+                {2f, 47f}     // Player 2
+        };
+
         for (int i = 0; i < carCount; i++) {
-            // Create a new car object and set its initial position randomly within a range
             Car car = new Car();
-            // Randomize the car's position in a small range
-            car.setPosition((float) (Math.random() * 30), 0.0f, (float) (Math.random() * 30));
+            // Use fixed spawn positions based on the index
+            float x = spawnPositions[i][0];
+            float z = spawnPositions[i][1];
+            car.setPosition(x, 0.0f, z);
             cars.add(car);
         }
 
@@ -135,7 +147,7 @@ public class Main {
             GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
             GL11.glLoadIdentity();
 
-            if (gameState == GameState.MENU) {
+            if (gameState == GameState.MENU || gameState == GameState.GAME_OVER || gameState == GameState.YOU_WIN) {
                 renderMenu();
                 handleMenuInput();
             } else if (gameState == GameState.PLAYING) {
@@ -153,7 +165,21 @@ public class Main {
                 moveEnemyCar();
                 tryFall(enemyCar);
                 checkGameRestart();
-            }
+
+                // Check for win/loss condition
+                if (cars.get(currCar).hasFallenOffEdge) {
+                    gameState = GameState.GAME_OVER;
+                } else {
+                    int activePlayers = 0;
+                    for (Car car : cars) {
+                        if (!car.hasFallenOffEdge) activePlayers++;
+                    }
+                    if (activePlayers == 1) {
+                        System.out.println("[GAME] You Win condition met!");
+                        gameState = GameState.YOU_WIN;
+                    }
+                }
+            }                       
 
             GLFW.glfwSwapBuffers(window);
             GLFW.glfwPollEvents();
@@ -168,6 +194,21 @@ public class Main {
         GL11.glMatrixMode(GL11.GL_MODELVIEW);
         GL11.glPushMatrix();
         GL11.glLoadIdentity();
+
+        if (gameState == GameState.GAME_OVER) {
+            drawText("GAME OVER", 360, 300); // Centered text
+            drawButton(300, 500, 200, 50, "Back to Menu");
+            drawText("Back to Menu", 370, 515);
+            System.out.println("[RENDER] Drawing Game Over screen");
+            return;
+        }   
+
+        if (gameState == GameState.YOU_WIN) {
+            drawText("YOU WIN!", 370, 300);
+            drawButton(300, 500, 200, 50, "Back to Menu");
+            drawText("Back to Menu", 370, 515);
+            return; // Skip drawing the rest of the menu
+        }        
 
         if (menuState == MenuState.MAIN_MENU) {
             drawButton(300, 150, 200, 50, "Start Game");
@@ -214,8 +255,7 @@ public class Main {
             drawText("Hi, welcome to the lobby", 300, 200);
             drawButton(300, 500, 200, 50, "Back to Menu");
             drawText("Back to Menu", 400, 515);
-        }
-
+        }             
 
         GL11.glPopMatrix();
         GL11.glMatrixMode(GL11.GL_PROJECTION);
@@ -231,7 +271,7 @@ public class Main {
         GL11.glVertex2f(x + w, y + h);
         GL11.glVertex2f(x, y + h);
         GL11.glEnd();
-    }    
+    }
 
     private void drawText(String text, float x, float y) {
         // Center the text horizontally
@@ -259,10 +299,25 @@ public class Main {
                         gameState = GameState.PLAYING;
                     } else if (ypos[0] >= 220 && ypos[0] <= 270) {
                         System.out.println("HOST button clicked");
-                        serverThread = new ServerThread(playerList);
-                        serverThread.start();
+                    
+                        // Start server
+                        new Thread(() -> {
+                            try {
+                                GameServer.main(null);
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }).start();
+                    
+                        // Connect host as player 0
+                        clientThread = new GameClient("127.0.0.1", this);
+                        clientThread.start();
+                    
                         hostIp = getLocalIp();
                         menuState = MenuState.HOSTING;
+                        this.currCar = 0;
+                    
+                        System.out.println("[HOST] Assigned self to car index 0");
                     } else if (ypos[0] >= 290 && ypos[0] <= 340) {
                         System.out.println("JOIN button clicked");
                         menuState = MenuState.JOINING;
@@ -276,15 +331,8 @@ public class Main {
             if (menuState == MenuState.HOSTING) {
                 if (xpos[0] >= 300 && xpos[0] <= 500 && ypos[0] >= 500 && ypos[0] <= 550) {
                     System.out.println("Back to Menu clicked (HOSTING)");
-                    if (serverThread != null) {
-                        serverThread.shutdown();
-                        serverThread = null;
-                    }
                     playerList.clear();
                     menuState = MenuState.MAIN_MENU;
-                    if (serverThread != null) {
-                        serverThread.broadcastMessage("START_GAME");
-                    }
                 }
                 // Start Game button clicked
                 if (xpos[0] >= 300 && xpos[0] <= 500 && ypos[0] >= 420 && ypos[0] <= 470) {
@@ -293,10 +341,10 @@ public class Main {
                     try {
                         System.out.println("[HOST] Waiting before broadcasting...");
                         Thread.sleep(500); // delay for client stabilization
-                        if (serverThread != null) {
-                            serverThread.broadcastMessage("START_GAME");
-                            System.out.println("[HOST] START_GAME broadcast sent.");
-                        }
+                        if (clientThread != null) {
+                            clientThread.sendCustomMessage("START_GAME");
+                            System.out.println("[HOST] START_GAME message sent to server.");
+                        }                        
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
@@ -323,6 +371,26 @@ public class Main {
                     menuState = MenuState.MAIN_MENU;
                 }
             }
+
+            if (gameState == GameState.GAME_OVER) {
+                if (xpos[0] >= 300 && xpos[0] <= 550 &&
+                    ypos[0] >= 500 && ypos[0] <= 550) {
+                    System.out.println("[GAME OVER] Returning to main menu");
+                    gameState = GameState.MENU;
+                    currCar = -1;
+                    cars.clear();
+                    // Optionally reset other things like tabPressed or menuState
+                }
+            }       
+            
+            if (gameState == GameState.YOU_WIN || gameState == GameState.GAME_OVER) {
+                if (xpos[0] >= 300 && xpos[0] <= 500 && ypos[0] >= 500 && ypos[0] <= 550) {
+                    System.out.println("Back to Menu clicked (WIN)");
+                    resetGameState(); // your method to reset stuff
+                    gameState = GameState.MENU;
+                    menuState = MenuState.MAIN_MENU;
+                }
+            }            
         }
     }
 
@@ -340,7 +408,7 @@ public class Main {
 
     public void checkCarDistance(Car activeCar, Car car) { // titus working on distance calculation
         float distance = (float) Math.sqrt((activeCar.getX() - car.getX()) * (activeCar.getX() - car.getX()) + (activeCar.getZ() - car.getZ()) * (activeCar.getZ() - car.getZ()));
-        
+
         if (distance < 2.0 && distance != 0.0) {
             System.err.println("Distance between cars: " + distance);
         }
@@ -385,9 +453,11 @@ public class Main {
         float fallSpeed = 0.1f;
         if (carX < terrainMinX || carX > terrainMaxX || carZ < terrainMinZ || carZ > terrainMaxZ) {
             car.setPosition(car.getX(), car.getY() - fallSpeed, car.getZ());
-            if (carY < 0) {
+            if (carY < 0 && car == cars.get(currCar)) {
                 car.hasFallenOffEdge = true;
-            }
+                System.out.println("[GAME OVER] Your car fell off the terrain.");
+                // Let loop() handle setting gameState
+            }                     
         }
 
     }
@@ -496,8 +566,8 @@ public class Main {
     }
 
     private void gluLookAt(float eyeX, float eyeY, float eyeZ,
-            float centerX, float centerY, float centerZ,
-            float upX, float upY, float upZ) {
+                           float centerX, float centerY, float centerZ,
+                           float upX, float upY, float upZ) {
         // Step 1: Calculate the forward vector (the ddirection the camera is looking)
         float[] forward = {
                 centerX - eyeX,
@@ -558,6 +628,7 @@ public class Main {
     }
 
     private void updateCarMovement() {
+        if (currCar == -1 || currCar >= cars.size()) return;
 
         if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_TAB) == GLFW.GLFW_PRESS) {
             if (!tabPressed) {
@@ -569,23 +640,47 @@ public class Main {
         }
 
         Car activeCar = cars.get(currCar);
-        if (activeCar.hasFallenOffEdge) {
-            return; // Don't allow movement if the car has fallen off the edge
+        if (activeCar.getY() < FALL_THRESHOLD_Y && !activeCar.hasFallenOffEdge) {
+            activeCar.hasFallenOffEdge = true;
+            System.out.println("[FALL] Car " + currCar + " has fallen.");
+            return;
+        }        
+
+        if (activeCar.hasFallenOffEdge) return;
+
+        System.out.println("activeCar Y = " + activeCar.getY());
+
+        if (activeCar.getY() < -10 && !activeCar.hasFallenOffEdge) {
+            activeCar.hasFallenOffEdge = true;
+            gameState = GameState.GAME_OVER;
+            System.out.println("[GAME OVER] Your car fell off the map.");
+            return;
         }
 
-        // Handle car movement
-        // NOAH: Added decelerate function
-        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_UP) == GLFW.GLFW_PRESS) {
-            activeCar.accelerate();
-        }
-        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_DOWN) == GLFW.GLFW_PRESS) {
-            activeCar.reverse();
-        }
-        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT) == GLFW.GLFW_PRESS) {
-            activeCar.turnLeft();
-        }
-        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT) == GLFW.GLFW_PRESS) {
-            activeCar.turnRight();
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_UP) == GLFW.GLFW_PRESS) activeCar.accelerate();
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_DOWN) == GLFW.GLFW_PRESS) activeCar.reverse();
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_LEFT) == GLFW.GLFW_PRESS) activeCar.turnLeft();
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT) == GLFW.GLFW_PRESS) activeCar.turnRight();
+
+        if (GLFW.glfwGetKey(window, GLFW.GLFW_KEY_SPACE) == GLFW.GLFW_PRESS) {
+            long now = System.currentTimeMillis();
+            if (now - lastShoveTime > SHOVE_COOLDOWN_MS) {
+                lastShoveTime = now;
+                performShove();
+            }
+            if (clientThread != null) {
+                clientThread.sendCustomMessage("SHOVE:" + currCar);
+            }            
+        }        
+
+        // Send position to server
+        if (clientThread != null) {
+            clientThread.sendUpdate(
+                activeCar.getX(),
+                activeCar.getY(),
+                activeCar.getZ(),
+                activeCar.getAngle()
+            );
         }
     }
 
@@ -616,7 +711,7 @@ public class Main {
 
         // Call to distance threshhold function
         // This is added as a way to call another function when the distance is reached
-        float distanceThresh = 10.0f;
+        float distanceThresh = 5.0f;
         if (closestDistance < distanceThresh) { // Do something within a certian distance
             onWithinDistanceThreshhold(enemyCar, closestCar);
         }
@@ -635,7 +730,7 @@ public class Main {
             }
 
             // Move the enemy car towards the closest player car
-            float speed = 0.05f; // Adjust the speed of the enemy car
+            float speed = 0.02f; // Adjust the speed of the enemy car
             float newX = enemyCar.getX() + dx * speed;
             float newZ = enemyCar.getZ() + dz * speed;
 
@@ -649,26 +744,54 @@ public class Main {
     public int counter = 0;
 
     public void onWithinDistanceThreshhold(Car enemyCar, Car closestCar) {
-        counter++; // Simple counter and count function just to show the functionality
+        counter++; // Debug logging
         if (counter % 500 == 0) {
             System.out.println("Enemy car is within distance threshold of player car!");
-            System.out.println(
-                    "Enemy car position: " + enemyCar.getX() + ", " + enemyCar.getY() + ", " + enemyCar.getZ());
-            System.out.println("Closest player car position: " + closestCar.getX() + ", " + closestCar.getY() + ", "
-                    + closestCar.getZ());
+            System.out.println("Enemy car position: " + enemyCar.getX() + ", " + enemyCar.getY() + ", " + enemyCar.getZ());
+            System.out.println("Closest player car position: " + closestCar.getX() + ", " + closestCar.getY() + ", " + closestCar.getZ());
+        }
+    
+        float dx = closestCar.getX() - enemyCar.getX();
+        float dz = closestCar.getZ() - enemyCar.getZ();
+        float distance = (float) Math.sqrt(dx * dx + dz * dz);
+    
+        if (distance < 5.0f) {
+            float angle = (float) Math.atan2(dz, dx);
+            float shoveStrength = 2.5f;
+    
+            float shoveX = (float) Math.cos(angle) * shoveStrength;
+            float shoveZ = (float) Math.sin(angle) * shoveStrength;
+    
+            // Local visual shove
+            closestCar.setPosition(
+                closestCar.getX() + shoveX,
+                closestCar.getY(),
+                closestCar.getZ() + shoveZ
+            );
+    
+            System.out.println("[ENEMY SHOVE] Enemy shoved a player!");
+    
+            // === 🔁 Broadcast to clients ===
+            if (serverThread != null) {
+                int index = cars.indexOf(closestCar);
+                String msg = "ENEMY_SHOVE:" + index + ":" + shoveX + ":" + shoveZ;
+                GameServer.broadcast(msg);
+            }
         }
     }
+      
     // NOAH: onWithinDistanceThreshhold END
 
     public static class Car {
         private float x = 0, y = 0, z = 0; // Car's position
         private float speed = 0; // Current speed
         private float angle = 0; // Direction the car is facing
-        private float maxSpeed = 0.25f; // titus sped up
+        private float maxSpeed = 0.5f; // titus sped 
         private float acceleration = 0.01f;
-        private float friction = 0.98f; // titus made higher friction
-        private float turnSpeed = 2.0f; // Speed of turning
+        private float friction = 0.7f; // titus made higher friction
+        private float turnSpeed = 1.0f; // Speed of turning
         private boolean hasFallenOffEdge = false;
+        private float originalX, originalY, originalZ;
 
         public float getX() {
             return x;
@@ -691,6 +814,10 @@ public class Main {
             this.x = x;
             this.y = y;
             this.z = z;
+
+            this.originalX = x;
+            this.originalY = y;
+            this.originalZ = z;
         }
 
         public void accelerate() {
@@ -719,6 +846,13 @@ public class Main {
             angle -= turnSpeed;
         }
 
+        public void reset() {
+            this.hasFallenOffEdge = false;
+            this.setPosition(originalX, originalY, originalZ); // use your actual spawn values
+            this.angle = 0;
+            this.speed = 0;
+        }        
+
         public void update() {
             // Update position based on speed and angle
             x += speed * Math.sin(Math.toRadians(angle));
@@ -731,7 +865,7 @@ public class Main {
         public void render(Terrain terrain, int carNumber) { // titus added carnumber
             // Get the heights of each wheel
             float frontLeftWheelY = terrain.getTerrainHeightAt(x - 0.2f, z + 0.5f) + y; // NOAH: added support for
-                                                                                        // rendering body when falling
+            // rendering body when falling
             float frontRightWheelY = terrain.getTerrainHeightAt(x + 0.2f, z + 0.5f) + y;
             float rearLeftWheelY = terrain.getTerrainHeightAt(x - 0.2f, z - 0.5f) + y;
             float rearRightWheelY = terrain.getTerrainHeightAt(x + 0.2f, z - 0.5f) + y;
@@ -843,7 +977,11 @@ public class Main {
 
     public static class OBJLoader {
         public Model loadModel(String fileName) throws IOException {
-            BufferedReader reader = new BufferedReader(new FileReader(fileName));
+            InputStream input = getClass().getClassLoader().getResourceAsStream(fileName);
+            if (input == null) {
+                throw new FileNotFoundException("Could not find resource: " + fileName);
+            }
+            BufferedReader reader = new BufferedReader(new InputStreamReader(input));
             String line;
             List<float[]> vertices = new ArrayList<>();
             List<float[]> normals = new ArrayList<>();
@@ -937,57 +1075,111 @@ public class Main {
             }
         }
 
+        private float getHeightAtPoint(float[] vertices, float x, float z) {
+            float closestDist = Float.MAX_VALUE;
+            float closestY = 0f;
+        
+            for (int i = 0; i < vertices.length; i += 3) {
+                float vx = vertices[i];
+                float vy = vertices[i + 1];
+                float vz = vertices[i + 2];
+        
+                float dx = vx - x;
+                float dz = vz - z;
+                float distSq = dx * dx + dz * dz;
+        
+                if (distSq < closestDist) {
+                    closestDist = distSq;
+                    closestY = vy;
+                }
+            }
+        
+            return closestY;
+        }
+
         public void render() {
-            GL11.glShadeModel(GL11.GL_SMOOTH); // Smooth shading for better Phong effect
-
-            // Adjust terrain material properties to make it brighter
-            FloatBuffer terrainAmbient = BufferUtils.createFloatBuffer(4).put(new float[] { 0.6f, 0.8f, 0.6f, 1.0f });
-            // Higher ambient light reflection
-            FloatBuffer terrainDiffuse = BufferUtils.createFloatBuffer(4).put(new float[] { 0.7f, 0.9f, 0.7f, 1.0f });
-            // Higher diffuse light reflection for visibility
-            FloatBuffer terrainSpecular = BufferUtils.createFloatBuffer(4).put(new float[] { 0.2f, 0.2f, 0.2f, 1.0f });
-            // Light specular highlight for subtle shine
-
-            terrainAmbient.flip();
-            terrainDiffuse.flip();
-            terrainSpecular.flip();
-
-            GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_AMBIENT, terrainAmbient);
-            GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_DIFFUSE, terrainDiffuse);
-            GL11.glMaterialfv(GL11.GL_FRONT_AND_BACK, GL11.GL_SPECULAR, terrainSpecular);
-            GL11.glMaterialf(GL11.GL_FRONT_AND_BACK, GL11.GL_SHININESS, 10.0f); // Lower shininess for a more matte look
-
+            // Get model data
             float[] vertices = model.getVertices();
-            float[] normals = model.getNormals();
             int[] indices = model.getIndices();
-
+        
+            // ====== Calculate center of floor for the circle ======
+            float minX = Float.MAX_VALUE, maxX = -Float.MAX_VALUE;
+            float minZ = Float.MAX_VALUE, maxZ = -Float.MAX_VALUE;
+            float maxY = -Float.MAX_VALUE;
+        
+            for (int i = 0; i < vertices.length; i += 3) {
+                float x = vertices[i];
+                float y = vertices[i + 1];
+                float z = vertices[i + 2];
+        
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (z < minZ) minZ = z;
+                if (z > maxZ) maxZ = z;
+        
+                if (x >= minX && x <= maxX && z >= minZ && z <= maxZ) {
+                    if (y > maxY) maxY = y;
+                }
+            }
+        
+            float centerX = (minX + maxX) / 2.0f;
+            float centerZ = (minZ + maxZ) / 2.0f;
+        
+            // ====== Render the tan floor ======
+            GL11.glDisable(GL11.GL_LIGHTING);
+            GL11.glColor3f(0.82f, 0.71f, 0.55f); // Tan
+        
             GL11.glBegin(GL11.GL_TRIANGLES);
-            float incValue = 0.075f;
             for (int i = 0; i < indices.length; i += 3) {
-                float r = 0.51f, g = 0.40f, b = 0.22f;
-                int vIndex1 = indices[i] * 3;
-                int vIndex2 = indices[i + 1] * 3;
-                int vIndex3 = indices[i + 2] * 3;
-                GL11.glColor3f(r, g, b);
-                GL11.glNormal3f(normals[vIndex1], normals[vIndex1 + 1], normals[vIndex1 + 2]);
-                GL11.glVertex3f(vertices[vIndex1], vertices[vIndex1 + 1], vertices[vIndex1 + 2]);
-
-                r += incValue;
-                g += incValue;
-                b += incValue;
-                GL11.glColor3f(r, g, b);
-                GL11.glNormal3f(normals[vIndex2], normals[vIndex2 + 1], normals[vIndex2 + 2]);
-                GL11.glVertex3f(vertices[vIndex2], vertices[vIndex2 + 1], vertices[vIndex2 + 2]);
-
-                r += incValue;
-                g += incValue;
-                b += incValue;
-
-                GL11.glColor3f(r, g, b);
-                GL11.glNormal3f(normals[vIndex3], normals[vIndex3 + 1], normals[vIndex3 + 2]);
-                GL11.glVertex3f(vertices[vIndex3], vertices[vIndex3 + 1], vertices[vIndex3 + 2]);
+                for (int j = 0; j < 3; j++) {
+                    int index = indices[i + j] * 3;
+                    GL11.glVertex3f(vertices[index], vertices[index + 1], vertices[index + 2]);
+                }
             }
             GL11.glEnd();
+        
+            // ====== Draw black grid lines following floor ======
+            GL11.glColor3f(0f, 0f, 0f); // Black
+            GL11.glLineWidth(1.2f);
+        
+            float step = 2.0f;
+        
+            // Draw vertical grid lines (X-direction)
+            for (float x = minX; x <= maxX; x += step) {
+                GL11.glBegin(GL11.GL_LINE_STRIP);
+                for (float z = minZ; z <= maxZ; z += step) {
+                    float closestY = getHeightAtPoint(vertices, x, z);
+                    GL11.glVertex3f(x, closestY + 0.01f, z); // Slight offset to prevent z-fighting
+                }
+                GL11.glEnd();
+            }
+        
+            // Draw horizontal grid lines (Z-direction)
+            for (float z = minZ; z <= maxZ; z += step) {
+                GL11.glBegin(GL11.GL_LINE_STRIP);
+                for (float x = minX; x <= maxX; x += step) {
+                    float closestY = getHeightAtPoint(vertices, x, z);
+                    GL11.glVertex3f(x, closestY + 0.01f, z);
+                }
+                GL11.glEnd();
+            }
+        
+            // ====== Draw hollow red circle in center ======
+            GL11.glColor3f(0.6f, 0f, 0f); // Dark red
+            float radius = 14.0f;
+            int segments = 100;
+            float yOffset = maxY + 0.05f;
+        
+            GL11.glLineWidth(5.0f);
+            GL11.glBegin(GL11.GL_LINE_LOOP);
+            for (int i = 0; i <= segments; i++) {
+                double angle = 2 * Math.PI * i / segments;
+                float x = centerX + (float) Math.cos(angle) * radius;
+                float z = centerZ + (float) Math.sin(angle) * radius;
+                GL11.glVertex3f(x, yOffset, z);
+            }
+            GL11.glEnd();
+            GL11.glLineWidth(1.0f);
         }
 
         public float getTerrainHeightAt(float x, float z) {
@@ -1029,7 +1221,7 @@ public class Main {
         }
 
         private boolean isPointInTriangle(float px, float pz, float v1X, float v1Z, float v2X, float v2Z, float v3X,
-                float v3Z) {
+                                          float v3Z) {
             float d1 = sign(px, pz, v1X, v1Z, v2X, v2Z);
             float d2 = sign(px, pz, v2X, v2Z, v3X, v3Z);
             float d3 = sign(px, pz, v3X, v3Z, v1X, v1Z);
@@ -1045,8 +1237,8 @@ public class Main {
         }
 
         private float interpolateHeight(float x, float z, float v1X, float v1Y, float v1Z, float v2X, float v2Y,
-                float v2Z,
-                float v3X, float v3Y, float v3Z) {
+                                        float v2Z,
+                                        float v3X, float v3Y, float v3Z) {
             // Calculate the areas needed for barycentric interpolation
             float areaTotal = triangleArea(v1X, v1Z, v2X, v2Z, v3X, v3Z);
             float area1 = triangleArea(x, z, v2X, v2Z, v3X, v3Z);
@@ -1069,5 +1261,102 @@ public class Main {
 
     public void setGameState(GameState state) {
         this.gameState = state;
+    }
+
+    public void setCurrentCarIndex(int index) {
+        this.currCar = index;
+        System.out.println("[MAIN] This player is controlling car #" + index);
+    }    
+
+    public void updateRemoteCar(int index, float x, float y, float z, float angle) {
+        System.out.println("[REMOTE SYNC] Received update for car " + index +
+                           " (local car = " + currCar + ") => x=" + x + ", z=" + z);
+    
+        if (index >= 0 && index < cars.size() && index != currCar) {
+            Car car = cars.get(index);
+            car.setPosition(x, y, z);
+            car.angle = angle;
+            System.out.println("[REMOTE SYNC] Applied update to car " + index);
+        }
+    }
+    
+    private void performShove() {
+        Car activeCar = cars.get(currCar);
+        float shoveRadius = 5.0f;
+        float shoveStrength = 2.5f;
+    
+        for (int i = 0; i < cars.size(); i++) {
+            if (i == currCar) continue;
+    
+            Car target = cars.get(i);
+            float dx = target.getX() - activeCar.getX();
+            float dz = target.getZ() - activeCar.getZ();
+            float distance = (float) Math.sqrt(dx * dx + dz * dz);
+    
+            if (distance < shoveRadius) {
+                // Push away from active car
+                float angle = (float) Math.atan2(dz, dx);
+                float shoveX = (float) Math.cos(angle) * shoveStrength;
+                float shoveZ = (float) Math.sin(angle) * shoveStrength;
+    
+                target.setPosition(
+                    target.getX() + shoveX,
+                    target.getY(),
+                    target.getZ() + shoveZ
+                );
+    
+                System.out.println("[SHOVE] Car " + i + " shoved by car " + currCar);
+            }
+        }
+    }
+
+    public void performShoveFromRemote(int sourceIndex) {
+        Car sourceCar = cars.get(sourceIndex);
+        float shoveRadius = 5.0f;
+        float shoveStrength = 2.5f;
+    
+        for (int i = 0; i < cars.size(); i++) {
+            if (i == sourceIndex) continue;
+    
+            Car target = cars.get(i);
+            float dx = target.getX() - sourceCar.getX();
+            float dz = target.getZ() - sourceCar.getZ();
+            float distance = (float) Math.sqrt(dx * dx + dz * dz);
+    
+            if (distance < shoveRadius) {
+                float angle = (float) Math.atan2(dz, dx);
+                float shoveX = (float) Math.cos(angle) * shoveStrength;
+                float shoveZ = (float) Math.sin(angle) * shoveStrength;
+    
+                target.setPosition(
+                    target.getX() + shoveX,
+                    target.getY(),
+                    target.getZ() + shoveZ
+                );
+    
+                System.out.println("[REMOTE SHOVE] Car " + i + " shoved by car " + sourceIndex);
+            }
+        }
+    }    
+
+    private void resetGameState() {
+        gameState = GameState.MENU;
+        menuState = MenuState.MAIN_MENU;
+        restartGame = true;
+        for (Car car : cars) {
+            car.reset(); // make sure you have this method in your Car class
+        }
+        currCar = 0;
+    } 
+
+    public void applyShoveToCar(int index, float shoveX, float shoveZ) {
+        if (index < 0 || index >= cars.size()) return;
+        Car car = cars.get(index);
+        car.setPosition(
+            car.getX() + shoveX,
+            car.getY(),
+            car.getZ() + shoveZ
+        );
+        System.out.println("[CLIENT] Enemy shove synced to car " + index);
     }    
 }
