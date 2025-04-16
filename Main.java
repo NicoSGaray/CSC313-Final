@@ -14,6 +14,13 @@ import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.Clip;
+import javax.sound.sampled.FloatControl;
+import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.UnsupportedAudioFileException;
+
 enum GameState { MENU, PLAYING, GAME_OVER, YOU_WIN }
 enum MenuState { MAIN_MENU, HOSTING, JOINING, JOINED_LOBBY }
 
@@ -62,6 +69,9 @@ public class Main {
     }
 
     private void init() {
+        loadSounds();
+        playSound("BGM", 0.2f); // Lower volume since it loops
+
         if (!GLFW.glfwInit()) {
             throw new IllegalStateException("Unable to initialize GLFW");
         }
@@ -70,6 +80,8 @@ public class Main {
         if (window == 0) {
             throw new IllegalStateException("Failed to create the GLFW window");
         }
+
+        
         GLFW.glfwMakeContextCurrent(window);
         GL.createCapabilities();
 
@@ -455,6 +467,7 @@ public class Main {
             car.setPosition(car.getX(), car.getY() - fallSpeed, car.getZ());
             if (carY < 0 && car == cars.get(currCar)) {
                 car.hasFallenOffEdge = true;
+                playSound("Death", 0.8f);
                 System.out.println("[GAME OVER] Your car fell off the terrain.");
                 // Let loop() handle setting gameState
             }                     
@@ -1304,6 +1317,8 @@ public class Main {
                     target.getY(),
                     target.getZ() + shoveZ
                 );
+
+                playSound("Shove", 0.8f);
     
                 System.out.println("[SHOVE] Car " + i + " shoved by car " + currCar);
             }
@@ -1359,4 +1374,55 @@ public class Main {
         );
         System.out.println("[CLIENT] Enemy shove synced to car " + index);
     }    
+    private static final java.util.Map<String, Clip> soundCache = new java.util.HashMap<>(); // NOAH: added map of
+                                                                                             // sounds
+
+    public static void loadSounds() { // TODO: populate this
+        loadSound("BGM", "Sounds/sample_bgm.wav");
+        loadSound("Shove", "Sounds/Shove.wav");
+        loadSound("Death", "Sounds/Sad_trombone.wav");
+    }
+
+    public static void loadSound(String soundName, String filePath) { // NOAH: added loader for sounds
+        try (AudioInputStream audioIn = AudioSystem.getAudioInputStream(new File(filePath))) {
+            Clip clip = AudioSystem.getClip();
+            clip.open(audioIn);
+            soundCache.put(soundName, clip);
+        } catch (IOException | LineUnavailableException | UnsupportedAudioFileException ex) {
+            System.err.println("Error loading sound: " + ex.getMessage());
+        }
+    }
+
+    public static void playSound(String soundName, float volume) { // NOAH: added sound player
+        Clip clip = soundCache.get(soundName);
+        if (clip == null) {
+            System.err.println("Sound not found: " + soundName);
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                if (clip.isRunning()) {
+                    clip.stop();
+                }
+                clip.setFramePosition(0);
+
+                // Adjust the volume
+                FloatControl volumeControl = (FloatControl) clip.getControl(FloatControl.Type.MASTER_GAIN);
+                float dB = (float) (20.0 * Math.log10(volume <= 0.0001f ? 0.0001f : volume));
+                volumeControl.setValue(dB);
+
+                // Start playing the clip
+                clip.start();
+
+                // Allow the clip to play without blocking the main thread
+                while (clip.isRunning()) {
+                    Thread.sleep(50);
+                }
+
+            } catch (IllegalArgumentException | InterruptedException ex) {
+                System.err.println("Error playing sound: " + ex.getMessage());
+            }
+        }).start();
+    }
 }
